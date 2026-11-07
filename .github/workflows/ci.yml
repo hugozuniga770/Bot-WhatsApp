@@ -1,0 +1,51 @@
+name: CI - pruebas del bot
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener la version del repositorio
+        uses: actions/checkout@v6
+
+      - name: Preparar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Registrar entorno y version comprobada
+        run: |
+          python --version
+          git rev-parse HEAD
+
+      - name: Instalar dependencias declaradas
+        run: python -m pip install -r requirements.txt
+
+      - name: Comprobar que el bot arranca (sin llaves reales)
+        env:
+          ANTHROPIC_API_KEY: ci-falsa
+          WHATSAPP_TOKEN: ci-falso
+          PHONE_NUMBER_ID: "0"
+          VERIFY_TOKEN: ci
+          APP_SECRET: ci
+        run: python -c "from bot.app import crear_app; crear_app(); print('El bot arranca')"
+
+      - name: Ejecutar las pruebas
+        run: python -m pytest -v --junitxml=evidencias/junit.xml
+
+      - name: Conservar el resultado de las pruebas
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidencias/junit.xml
+          if-no-files-found: warn
+          retention-days: 14
