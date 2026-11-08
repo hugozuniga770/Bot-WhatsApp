@@ -5,22 +5,22 @@ from bot.config import ConfigIncompleta, cargar
 
 
 def test_RF10_config_incompleta_avisa_que_variables_faltan():
-    # Dado un entorno al que le faltan la llave de Claude y el App Secret
-    entorno = {"WHATSAPP_TOKEN": "t", "PHONE_NUMBER_ID": "1", "VERIFY_TOKEN": "v"}
+    # Dado un entorno sin la clave maestra ni la contraseña del panel
     # Cuando se carga la configuración
     # Entonces se detiene nombrando exactamente lo que falta
-    with pytest.raises(ConfigIncompleta, match="ANTHROPIC_API_KEY, APP_SECRET"):
-        cargar(entorno)
+    with pytest.raises(ConfigIncompleta, match="CLAVE_MAESTRA, ADMIN_PASSWORD"):
+        cargar({"DATABASE_URL": "postgresql://x"})
 
 
-def test_RF10_config_completa_lee_el_manual_y_los_valores_por_defecto(tmp_path):
-    # Dado un entorno completo y un manual
-    manual = tmp_path / "manual.md"
-    manual.write_text("Eres el asistente", encoding="utf-8")
-    entorno = {"ANTHROPIC_API_KEY": "k", "WHATSAPP_TOKEN": "t", "PHONE_NUMBER_ID": "1",
-               "VERIFY_TOKEN": "v", "APP_SECRET": "s", "INSTRUCCIONES_ARCHIVO": str(manual)}
-    # Cuando se carga la configuración
-    config = cargar(entorno)
-    # Entonces trae el manual y los valores por defecto
-    assert config.instrucciones == "Eres el asistente"
-    assert (config.limite_historial, config.pausa_horas, config.mongodb_uri) == (20, 12.0, "")
+def test_RF10_contrasena_corta_no_se_acepta():
+    with pytest.raises(ConfigIncompleta, match="ADMIN_PASSWORD"):
+        cargar({"CLAVE_MAESTRA": "x" * 20, "ADMIN_PASSWORD": "1234"})
+
+
+def test_RF10_en_render_usa_su_url_y_cookies_seguras():
+    # Dado el entorno que pone Render
+    config = cargar({"CLAVE_MAESTRA": "x" * 20, "ADMIN_PASSWORD": "una-contraseña-larga",
+                     "RENDER": "true", "RENDER_EXTERNAL_URL": "https://bots.onrender.com/"})
+    # Entonces toma la URL pública, activa cookies seguras y deriva la clave de sesión
+    assert config.url_publica == "https://bots.onrender.com"
+    assert config.cookie_segura and len(config.secret_key) == 64

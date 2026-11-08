@@ -1,16 +1,29 @@
-"""Reglas del bot.
+"""Reglas del bot y del panel.
 
 Todas son funciones puras: no usan la red, ni la base de datos, ni el reloj.
-La hora (`ahora`) siempre llega como parametro, asi los tests deciden la hora.
+La hora (`ahora`, `hoy`) siempre llega como parametro, asi los tests deciden la hora.
 """
 import hashlib
 import hmac
+import re
+import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # El asistente escribe esta marca cuando hay que pasarle el chat a la duena.
 MARCA_HUMANO = "[PASAR_A_HUMANO]"
 
+# Precios por millon de tokens (USD), de platform.claude.com/docs/en/about-claude/pricing
+# consultados el 07/11/2026. Se pueden cambiar por empresa desde el panel.
+PRECIOS = {
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-sonnet-5-5": (2.00, 10.00),
+}
+MODELO_POR_DEFECTO = "claude-haiku-5-5"
+
+
+# ---------------------------------------------------------------- mensajes de Meta
 
 @dataclass(frozen=True)
 class MensajeEntrante:
@@ -53,6 +66,8 @@ def firma_valida(cuerpo: bytes, cabecera: str | None, secreto: str) -> bool:
     return hmac.compare_digest(esperada, cabecera[len("sha256="):])
 
 
+# ---------------------------------------------------------------- conversacion
+
 def recortar_historial(historial: list[dict], limite: int) -> list[dict]:
     """Deja los ultimos `limite` mensajes y hace que empiece por el cliente."""
     recorte = [dict(m) for m in historial[-limite:]] if limite > 0 else []
@@ -78,3 +93,162 @@ def fin_de_pausa(ahora: datetime, horas: float) -> datetime:
 def ocultar_numero(numero: str) -> str:
     """Para los registros (logs): solo los ultimos 4 digitos del cliente."""
     return "..." + numero[-4:] if len(numero) > 4 else "..."
+
+
+def lista_de_numeros(texto: str) -> set[str]:
+    """'+591 7000 0001, 59170000002' -> {'59170000001', '59170000002'}"""
+    return {n for n in (normalizar_numero(p) for p in re.split(r"[,;\n]+", texto or "")) if n}
+
+
+# ---------------------------------------------------------------- empresas y formularios
+
+def normalizar_numero(numero: str) -> str:
+    """'+591 750-13150' -> '59175013150' (formato que usa Meta)."""
+    return re.sub(r"\D", "", numero or "")
+
+
+def crear_slug(nombre: str) -> str:
+    """'Sentirse Única SRL' -> 'sentirse-unica-srl'"""
+    sin_tildes = unicodedata.normalize("NFKD", nombre or "").encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "-", sin_tildes.lower()).strip("-")
+    return slug[:40].strip("-") or "empresa"
+
+
+def enmascarar(secreto: str) -> str:
+    """Para mostrar una llave guardada sin revelarla: 'sk-ant-…a1b2'."""
+    if not secreto:
+        return ""
+    if len(secreto) <= 10:
+        return "…" + secreto[-2:]
+    return secreto[:7] + "…" + secreto[-4:]
+
+
+def errores_de_formato(campos: dict) -> dict[str, str]:
+    """Revisa que cada dato tenga la forma correcta antes de probarlo de verdad.
+
+    Solo revisa los campos que vienen con valor: los vacios se tratan aparte
+    (en el alta, un secreto vacio significa 'dejar el que ya estaba').
+    """
+    errores = {}
+    clave = campos.get("anthropic_key", "")
+    if clave and not clave.startswith("sk-ant-"):
+        errores["anthropic_key"] = "La llave de Claude empieza con sk-ant-. Revisa que la copiaste completa."
+    for campo, nombre in (("meta_app_id", "El App ID"), ("phone_number_id", "El Phone number ID")):
+        valor = campos.get(campo, "")
+        if valor and not re.fullmatch(r"\d{6,25}", valor):
+            errores[campo] = f"{nombre} son solo números (entre 6 y 25)."
+    secreto = campos.get("meta_app_secret", "")
+    if secreto and not re.fullmatch(r"[0-9a-fA-F]{32}", secreto):
+        errores["meta_app_secret"] = "El App Secret tiene 32 letras y números (0-9, a-f). Usa el botón Mostrar en Meta y cópialo entero."
+    token = campos.get("whatsapp_token", "")
+    if token and (len(token) < 50 or " " in token):
+        errores["whatsapp_token"] = "El token es un texto largo, sin espacios (suele empezar con EAA). Revisa que lo copiaste completo."
+    numero = campos.get("dueno_numero", "")
+    if numero and not re.fullmatch(r"\d{8,15}", numero):
+        errores["dueno_numero"] = "Escribe el número con código de país, por ejemplo 591 70000000."
+    saldo = campos.get("saldo_usd", "")
+    if saldo:
+        try:
+            if float(saldo) < 0:
+                raise ValueError
+        except ValueError:
+            errores["saldo_usd"] = "Escribe solo el monto en dólares, por ejemplo 5 o 5.50."
+    return errores
+
+
+# ---------------------------------------------------------------- creditos y uso
+
+def dia_local(ahora: datetime, zona: str) -> date:
+    """El dia del calendario en la zona del negocio (Bolivia por defecto)."""
+    return ahora.astimezone(ZoneInfo(zona)).date()
+
+
+def costo_usd(entrada: int, salida: int, precio_entrada: float, precio_salida: float) -> float:
+    return entrada * precio_entrada / 1_000_000 + salida * precio_salida / 1_000_000
+
+
+def serie_diaria(uso: list[dict], hoy: date, dias: int, precio_entrada: float, precio_salida: float) -> list[dict]:
+    """Una fila por dia (los ultimos `dias`, incluido hoy), con ceros donde no hubo uso."""
+    por_dia = {u["dia"]: u for u in uso}
+    serie = []
+    for i in range(dias - 1, -1, -1):
+        d = hoy - timedelta(days=i)
+        u = por_dia.get(d, {})
+        entrada, salida = int(u.get("entrada", 0)), int(u.get("salida", 0))
+        serie.append({
+            "dia": d,
+            "llamadas": int(u.get("llamadas", 0)),
+            "tokens": entrada + salida,
+            "costo": costo_usd(entrada, salida, precio_entrada, precio_salida),
+        })
+    mayor = max((s["tokens"] for s in serie), default=0)
+    for s in serie:
+        s["altura"] = round(100 * s["tokens"] / mayor) if mayor else 0
+    return serie
+
+
+def resumen_credito(saldo_usd, desde: date | None, uso: list[dict], hoy: date,
+                    precio_entrada: float, precio_salida: float, ventana: int = 7) -> dict:
+    """Estima cuanto saldo queda y para cuantos dias alcanza.
+
+    - `saldo_usd` es lo que habia en platform.claude.com el dia `desde`.
+    - Se resta lo gastado desde ese dia segun los tokens contados por el bot.
+    - El gasto diario es el promedio de los ultimos `ventana` dias (o de los
+      dias que lleva funcionando, si son menos).
+    """
+    if saldo_usd in (None, "") or desde is None:
+        return {"estado": "sin_saldo"}
+    saldo = float(saldo_usd)
+    gastado = sum(costo_usd(int(u["entrada"]), int(u["salida"]), precio_entrada, precio_salida)
+                  for u in uso if u["dia"] >= desde)
+    restante = max(0.0, saldo - gastado)
+
+    inicio = hoy - timedelta(days=ventana - 1)
+    con_uso = [u for u in uso if inicio <= u["dia"] <= hoy and (u["entrada"] or u["salida"])]
+    if con_uso:
+        primer_dia = min(u["dia"] for u in con_uso)
+        dias_observados = (hoy - max(inicio, primer_dia)).days + 1
+        gasto_ventana = sum(costo_usd(int(u["entrada"]), int(u["salida"]), precio_entrada, precio_salida)
+                            for u in con_uso)
+        gasto_diario = gasto_ventana / dias_observados
+    else:
+        gasto_diario = 0.0
+
+    resumen = {
+        "estado": "ok",
+        "saldo": saldo,
+        "gastado": gastado,
+        "restante": restante,
+        "porcentaje": round(100 * restante / saldo) if saldo > 0 else 0,
+        "gasto_diario": gasto_diario,
+        "dias": None,
+        "hasta": None,
+    }
+    if restante <= 0:
+        resumen["estado"] = "agotado"
+    elif gasto_diario > 0:
+        dias = int(restante / gasto_diario + 1e-9)  # 4.7 / 0.1 = 46.999... en punto flotante
+        resumen["dias"] = dias
+        resumen["hasta"] = hoy + timedelta(days=dias)
+        if dias < 7:
+            resumen["estado"] = "poco"
+    else:
+        resumen["estado"] = "sin_uso"
+    return resumen
+
+
+# ---------------------------------------------------------------- presentacion
+
+def hace(momento: datetime | None, ahora: datetime) -> str:
+    """'hace 5 min', 'hace 3 h', 'hace 2 días'."""
+    if momento is None:
+        return "nunca"
+    segundos = int((ahora - momento).total_seconds())
+    if segundos < 60:
+        return "hace un momento"
+    if segundos < 3600:
+        return f"hace {segundos // 60} min"
+    if segundos < 86400:
+        return f"hace {segundos // 3600} h"
+    dias = segundos // 86400
+    return "hace 1 día" if dias == 1 else f"hace {dias} días"

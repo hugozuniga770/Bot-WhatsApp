@@ -1,22 +1,18 @@
-"""Configuracion del bot.
+"""Configuracion del servicio.
 
-Lee las variables de entorno: el archivo .env en tu PC o las variables del
-servicio en Render. Si falta algo obligatorio, se detiene con un mensaje claro
-en vez de arrancar a medias.
+Desde la v2.0 las llaves de cada empresa NO van en variables de entorno: se
+cargan desde el panel y se guardan cifradas en la base. Aqui solo quedan las
+del servicio en si.
 """
+import hashlib
+import hmac
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 
-OBLIGATORIAS = (
-    "ANTHROPIC_API_KEY",
-    "WHATSAPP_TOKEN",
-    "PHONE_NUMBER_ID",
-    "VERIFY_TOKEN",
-    "APP_SECRET",
-)
+OBLIGATORIAS = ("CLAVE_MAESTRA", "ADMIN_PASSWORD")
 
 
 class ConfigIncompleta(Exception):
@@ -25,29 +21,19 @@ class ConfigIncompleta(Exception):
 
 @dataclass(frozen=True)
 class Config:
-    whatsapp_token: str
-    phone_number_id: str
-    verify_token: str
-    app_secret: str
-    instrucciones: str
+    clave_maestra: str
+    admin_password: str
+    plantilla_manual: str
+    secret_key: str = ""
+    database_url: str = ""
+    url_publica: str = ""
     graph_version: str = "v23.0"
-    modelo: str = "claude-haiku-5-5"
-    max_tokens: int = 600
-    limite_historial: int = 20
-    pausa_horas: float = 12.0
-    duena_numero: str = ""
-    mongodb_uri: str = ""
-    mongodb_base: str = "bot_whatsapp"
+    zona_horaria: str = "America/La_Paz"
+    cookie_segura: bool = True
 
 
-def _numero(entorno, clave, defecto, tipo):
-    valor = entorno.get(clave, "").strip()
-    if not valor:
-        return defecto
-    try:
-        return tipo(valor)
-    except ValueError:
-        raise ConfigIncompleta(f"{clave} debe ser un numero y vale '{valor}'.") from None
+def _derivar(clave_maestra: str, uso: str) -> str:
+    return hmac.new(clave_maestra.encode(), uso.encode(), hashlib.sha256).hexdigest()
 
 
 def cargar(entorno=None) -> Config:
@@ -60,23 +46,26 @@ def cargar(entorno=None) -> Config:
             + ", ".join(faltan)
             + ". Revisa tu .env (en tu PC) o las variables del servicio en Render."
         )
+    clave_maestra = entorno["CLAVE_MAESTRA"].strip()
+    if len(clave_maestra) < 16:
+        raise ConfigIncompleta("CLAVE_MAESTRA debe tener al menos 16 caracteres.")
+    admin_password = entorno["ADMIN_PASSWORD"].strip()
+    if len(admin_password) < 10:
+        raise ConfigIncompleta("ADMIN_PASSWORD debe tener al menos 10 caracteres.")
 
     archivo = Path(entorno.get("INSTRUCCIONES_ARCHIVO", "").strip() or RAIZ / "instrucciones.md")
     if not archivo.is_file():
-        raise ConfigIncompleta(f"No encuentro el manual del bot en {archivo}.")
+        raise ConfigIncompleta(f"No encuentro la plantilla del manual en {archivo}.")
 
+    url_publica = (entorno.get("URL_PUBLICA", "").strip() or entorno.get("RENDER_EXTERNAL_URL", "").strip()).rstrip("/")
     return Config(
-        whatsapp_token=entorno["WHATSAPP_TOKEN"].strip(),
-        phone_number_id=entorno["PHONE_NUMBER_ID"].strip(),
-        verify_token=entorno["VERIFY_TOKEN"].strip(),
-        app_secret=entorno["APP_SECRET"].strip(),
-        instrucciones=archivo.read_text(encoding="utf-8"),
+        clave_maestra=clave_maestra,
+        admin_password=admin_password,
+        plantilla_manual=archivo.read_text(encoding="utf-8"),
+        secret_key=entorno.get("SECRET_KEY", "").strip() or _derivar(clave_maestra, "sesiones"),
+        database_url=entorno.get("DATABASE_URL", "").strip(),
+        url_publica=url_publica,
         graph_version=entorno.get("GRAPH_VERSION", "").strip() or "v23.0",
-        modelo=entorno.get("CLAUDE_MODEL", "").strip() or "claude-haiku-5-5",
-        max_tokens=_numero(entorno, "MAX_TOKENS", 600, int),
-        limite_historial=_numero(entorno, "HISTORY_LIMIT", 20, int),
-        pausa_horas=_numero(entorno, "PAUSA_HORAS", 12.0, float),
-        duena_numero=entorno.get("DUENA_NUMERO", "").strip(),
-        mongodb_uri=entorno.get("MONGODB_URI", "").strip(),
-        mongodb_base=entorno.get("MONGODB_BASE", "").strip() or "bot_whatsapp",
+        zona_horaria=entorno.get("ZONA_HORARIA", "").strip() or "America/La_Paz",
+        cookie_segura=bool(entorno.get("RENDER")) or url_publica.startswith("https://"),
     )

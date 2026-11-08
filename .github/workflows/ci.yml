@@ -12,6 +12,21 @@ jobs:
   verificar-bot:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      # Postgres temporal solo para los tests de AlmacenPostgres (BOT-RF-11).
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: bot
+          POSTGRES_PASSWORD: bot
+          POSTGRES_DB: bot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bot -d bot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Obtener la version del repositorio
         uses: actions/checkout@v6
@@ -29,17 +44,27 @@ jobs:
       - name: Instalar dependencias declaradas
         run: python -m pip install -r requirements.txt
 
-      - name: Comprobar que el bot arranca (sin llaves reales)
+      - name: Comprobar que el servicio arranca (sin base ni llaves reales)
         env:
-          ANTHROPIC_API_KEY: ci-falsa
-          WHATSAPP_TOKEN: ci-falso
-          PHONE_NUMBER_ID: "0"
-          VERIFY_TOKEN: ci
-          APP_SECRET: ci
-        run: python -c "from bot.app import crear_app; crear_app(); print('El bot arranca')"
+          CLAVE_MAESTRA: clave-maestra-solo-para-el-ci
+          ADMIN_PASSWORD: contrasena-solo-para-el-ci
+        run: python -c "from bot.app import crear_app; crear_app(); print('El servicio arranca')"
 
-      - name: Ejecutar las pruebas
-        run: python -m pytest -v --junitxml=evidencias/junit.xml
+      - name: Ejecutar las pruebas (incluye PostgreSQL real)
+        env:
+          TEST_DATABASE_URL: postgresql://bot:bot@localhost:5432/bot_test
+        run: python -m pytest -v -rs --junitxml=evidencias/junit.xml
+
+      - name: Verificar que no se salto ninguna prueba
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          raiz = ET.parse("evidencias/junit.xml").getroot()
+          suite = raiz.find("testsuite") if raiz.tag == "testsuites" else raiz
+          saltadas = int(suite.get("skipped", 0))
+          print(f"Pruebas: {suite.get('tests')} | saltadas: {saltadas}")
+          raise SystemExit(1 if saltadas else 0)
+          PY
 
       - name: Conservar el resultado de las pruebas
         if: ${{ always() }}

@@ -2,33 +2,26 @@
 # Docs: https://render.com/docs/blueprint-spec
 services:
   - type: web
-    name: bot-whatsapp-mama
+    name: bots-whatsapp
     runtime: python
     plan: free                    # D-02: gratis; se duerme tras 15 min sin mensajes
     branch: main
     autoDeployTrigger: checksPass # D-09: despliega solo si el CI de GitHub pasa en verde
     buildCommand: pip install -r requirements.txt
+    # D-07: un solo proceso con 4 hilos (los candados por chat viven en memoria del proceso)
     startCommand: gunicorn --workers 1 --threads 4 --timeout 60 --bind 0.0.0.0:$PORT "bot.app:crear_app()"
-    healthCheckPath: /
+    healthCheckPath: /salud
     envVars:
       # sync: false = Render te pide el valor en el panel; nunca se escribe aquí.
-      - key: ANTHROPIC_API_KEY
+      - key: DATABASE_URL
         sync: false
-      - key: WHATSAPP_TOKEN
+      - key: ADMIN_PASSWORD
         sync: false
-      - key: PHONE_NUMBER_ID
-        sync: false
-      - key: APP_SECRET
-        sync: false
-      - key: VERIFY_TOKEN
-        sync: false
-      - key: MONGODB_URI
-        sync: false
-      - key: DUENA_NUMERO
-        sync: false
-      - key: CLAUDE_MODEL
-        value: claude-haiku-5-5
+      # Render la genera sola (256 bits al azar). Cópiala a un lugar seguro: si cambia,
+      # las llaves guardadas de las empresas ya no se pueden leer (D-14).
+      - key: CLAVE_MAESTRA
+        generateValue: true
+      - key: ZONA_HORARIA
+        value: America/La_Paz
       - key: GRAPH_VERSION
         value: v23.0
-      - key: PAUSA_HORAS
-        value: "12"

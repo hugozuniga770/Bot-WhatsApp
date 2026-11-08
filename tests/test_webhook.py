@@ -1,38 +1,49 @@
-"""Rutas que llama Meta (bot/app.py). Requisitos BOT-RF-07 y 08."""
-from conftest import CLIENTE, VERIFY
+"""Webhook de cada empresa (/webhook/<slug>). Requisitos BOT-RF-07, 08 y 12."""
+from bot.cifrado import Cifrador
+from bot.empresas import crear_empresa
+from conftest import CLIENTE, SECRETO_META
 
 
-def test_RF07_webhook_sin_firma_valida_se_rechaza_y_no_responde(cliente_web, payload, whatsapp):
-    # Dado un aviso con un mensaje, pero sin la firma de Meta
-    datos = payload({"id": "wamid.1", "from": CLIENTE, "type": "text", "text": {"body": "Hola"}})
-    # Cuando llega al webhook
-    r = cliente_web.post("/webhook", json=datos, headers={"X-Hub-Signature-256": "sha256=falsa"})
-    # Entonces se rechaza con 403 y nadie recibe respuesta
-    assert r.status_code == 403
-    assert whatsapp.enviados == []
+def _con_secreto(almacen, empresa, config, ahora):
+    cif = Cifrador(config.clave_maestra).cifrar(SECRETO_META)
+    return almacen.actualizar_empresa(empresa["id"], {"meta_app_secret_cif": cif}, ahora)
 
 
-def test_RF07_webhook_firmado_se_atiende(cliente_web, payload, firmar, whatsapp):
-    # Dado un aviso firmado con el App Secret
-    cuerpo, firma = firmar(payload({"id": "wamid.1", "from": CLIENTE, "type": "text", "text": {"body": "Hola"}}))
-    # Cuando llega al webhook
-    r = cliente_web.post("/webhook", data=cuerpo, headers={"X-Hub-Signature-256": firma, "Content-Type": "application/json"})
-    # Entonces Meta recibe 200 y el cliente, su respuesta
-    assert r.status_code == 200
-    assert whatsapp.enviados[0][0] == CLIENTE
-
-
-def test_RF08_verificacion_con_token_correcto_devuelve_el_challenge(cliente_web):
-    # Dado que Meta verifica el webhook con la palabra correcta
-    # Cuando llama a GET /webhook
-    r = cliente_web.get("/webhook", query_string={"hub.mode": "subscribe", "hub.verify_token": VERIFY, "hub.challenge": "12345"})
-    # Entonces se le devuelve el número que mandó
+def test_RF08_verificacion_con_el_token_de_la_empresa_devuelve_el_challenge(web, empresa, almacen):
+    # Dado que Meta verifica el webhook de la empresa con su token
+    r = web.get(f"/webhook/{empresa['slug']}", query_string={
+        "hub.mode": "subscribe", "hub.verify_token": empresa["verify_token"], "hub.challenge": "12345"})
+    # Entonces se le devuelve el número y el panel registra la conexión
     assert (r.status_code, r.get_data(as_text=True)) == (200, "12345")
+    assert "webhook" in almacen.actividad(empresa["id"])
 
 
-def test_RF08_verificacion_con_token_incorrecto_se_rechaza(cliente_web):
-    # Dado un intento de verificación con otra palabra
-    # Cuando llama a GET /webhook
-    r = cliente_web.get("/webhook", query_string={"hub.mode": "subscribe", "hub.verify_token": "otra", "hub.challenge": "12345"})
-    # Entonces se rechaza
+def test_RF08_token_incorrecto_o_empresa_inexistente_se_rechaza(web, empresa):
+    r = web.get(f"/webhook/{empresa['slug']}", query_string={"hub.mode": "subscribe", "hub.verify_token": "otro", "hub.challenge": "1"})
     assert r.status_code == 403
+    assert web.get("/webhook/no-existe", query_string={"hub.mode": "subscribe"}).status_code == 404
+
+
+def test_RF07_webhook_firmado_con_el_secreto_de_la_empresa_se_atiende(web, empresa, almacen, config, payload, firmar, whatsapp, ahora):
+    # Dada una empresa con su App Secret guardado (cifrado)
+    _con_secreto(almacen, empresa, config, ahora)
+    cuerpo, firma = firmar(payload({"id": "wamid.1", "from": CLIENTE, "type": "text", "text": {"body": "Hola"}}))
+    # Cuando Meta manda un mensaje firmado
+    r = web.post(f"/webhook/{empresa['slug']}", data=cuerpo, headers={"X-Hub-Signature-256": firma, "Content-Type": "application/json"})
+    # Entonces se responde 200 y el cliente recibe su respuesta
+    assert r.status_code == 200 and whatsapp.enviados[0][0] == CLIENTE
+
+
+def test_RF07_sin_firma_o_con_el_secreto_de_otra_empresa_se_rechaza(web, empresa, almacen, config, payload, firmar, whatsapp, ahora):
+    # Dadas dos empresas, cada una con su App Secret
+    _con_secreto(almacen, empresa, config, ahora)
+    otra = crear_empresa(almacen, "Otra", ahora)
+    otra = almacen.actualizar_empresa(otra["id"], {"estado": "activa", "meta_app_secret_cif": Cifrador(config.clave_maestra).cifrar("f" * 32)}, ahora)
+    datos = payload({"id": "wamid.1", "from": CLIENTE, "type": "text", "text": {"body": "Hola"}})
+    cuerpo, firma_de_la_primera = firmar(datos)
+    # Cuando llega sin firma, o firmado con el secreto de la primera al webhook de la segunda
+    sin_firma = web.post(f"/webhook/{empresa['slug']}", json=datos)
+    cruzado = web.post(f"/webhook/{otra['slug']}", data=cuerpo, headers={"X-Hub-Signature-256": firma_de_la_primera, "Content-Type": "application/json"})
+    # Entonces ambos se rechazan y nadie recibe respuesta
+    assert (sin_firma.status_code, cruzado.status_code) == (403, 403)
+    assert whatsapp.enviados == []

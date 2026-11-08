@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, campo_secreto %}
+{% set admin = (modo == 'admin') %}
+{% set total = 7 if admin else 6 %}
+{% block titulo %}{{ 'Editar ' ~ empresa.nombre if admin else 'Conectar el bot de WhatsApp' }}{% endblock %}
+{% block barra %}{% if admin %}{{ super() }}{% endif %}{% endblock %}
+{% block contenido %}
+{% if admin %}<p><a href="{{ url_for('panel.detalle', eid=empresa.id) }}">Volver a {{ empresa.nombre }}</a></p>{% endif %}
+<h1>{{ 'Editar ' ~ empresa.nombre if admin else 'Conectemos tu WhatsApp' }}</h1>
+{% if not admin %}
+<p class="suave">Son {{ total }} pasos. En cada uno te decimos dónde encontrar cada dato y puedes probar que esté bien antes de seguir. Tus llaves se guardan cifradas.</p>
+{% endif %}
+{% if errores %}<div class="aviso error" role="alert">Revisa {{ 'el dato marcado' if errores | length == 1 else 'los ' ~ (errores | length) ~ ' datos marcados' }} en rojo.</div>{% endif %}
+
+<ol class="pasos-indicador" aria-hidden="true">{% for i in range(total) %}<li></li>{% endfor %}</ol>
+
+<form class="asistente" method="post" action="{{ url_accion }}" novalidate
+      data-probar="{{ url_probar }}" data-webhook="{{ url_webhook }}">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+
+  <section class="paso" aria-labelledby="p1">
+    <p class="numero-paso">Paso 1 de {{ total }}</p>
+    <h2 id="p1">Tu negocio</h2>
+    {{ campo('nombre', 'Nombre del negocio', 'Como lo conocen tus clientes.', valores=valores, empresa=empresa, errores=errores, requerido=True) }}
+    {{ campo('dueno_nombre', 'Quién atiende', 'El bot dirá que esta persona le confirmará los detalles al cliente.', valores=valores, empresa=empresa, errores=errores, requerido=True) }}
+    {{ campo('dueno_numero', 'Tu número personal de WhatsApp', 'Con código de país, por ejemplo 591 70000000. Aquí te llegan los avisos y las pruebas. No pongas el número del negocio.', tipo='tel', valores=valores, empresa=empresa, errores=errores, requerido=True, autocompletar='tel') }}
+    {% set trato = (valores.get('trato') if valores else empresa.get('trato')) or 'usted' %}
+    <fieldset class="campo">
+      <label>¿Cómo trata el bot a tus clientes?</label>
+      <div class="opciones">
+        <label><input type="radio" name="trato" value="usted" {% if trato == 'usted' %}checked{% endif %}> De usted</label>
+        <label><input type="radio" name="trato" value="tu" {% if trato == 'tu' %}checked{% endif %}> De tú</label>
+      </div>
+    </fieldset>
+  </section>
+
+  <section class="paso" aria-labelledby="p2">
+    <p class="numero-paso">Paso 2 de {{ total }}</p>
+    <h2 id="p2">Lo que el bot debe saber</h2>
+    <p class="suave">El bot solo sabe lo que escribas aquí. Si algo no está, le dirá al cliente que tú le confirmas. Puedes completarlo después.</p>
+    {% for clave, titulo, ayuda in campos_negocio %}
+      {% set nombre = 'info_' ~ clave %}
+      {% set valor = (valores.get(nombre) if valores else (empresa.get('info') or {}).get(clave)) or '' %}
+      <div class="campo">
+        <label for="c-{{ nombre }}">{{ titulo }}<span class="ayuda">{{ ayuda }}</span></label>
+        <textarea id="c-{{ nombre }}" name="{{ nombre }}">{{ valor }}</textarea>
+      </div>
+    {% endfor %}
+  </section>
+
+  <section class="paso" aria-labelledby="p3">
+    <p class="numero-paso">Paso 3 de {{ total }}</p>
+    <h2 id="p3">La llave de Claude</h2>
+    <p class="suave">Claude es la inteligencia artificial que escribe las respuestas. La cuenta se paga por uso, con créditos que cargas tú.</p>
+    <details class="guia" open>
+      <summary>Dónde la encuentro</summary>
+      <ol>
+        <li>Entra a <a href="https://platform.claude.com" target="_blank" rel="noopener noreferrer">platform.claude.com</a> y crea tu cuenta, o inicia sesión.</li>
+        <li>Ve a <strong>Facturación</strong> (Billing) y compra créditos. Para empezar alcanza con USD 5.</li>
+        <li>Ve a <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener noreferrer">Configuración → Claves de API</a> y toca <strong>Crear clave</strong>. Ponle el nombre de tu negocio.</li>
+        <li>Cópiala apenas aparezca: no se vuelve a mostrar. Empieza con <code>sk-ant-</code>.</li>
+      </ol>
+    </details>
+    {{ campo_secreto('anthropic_key', 'Llave de Claude', 'Pégala completa. Empieza con sk-ant-.', mascaras, valores=valores, errores=errores, requerido=not admin) }}
+    {{ campo('saldo_usd', 'Cuántos créditos tiene la cuenta, en dólares', 'Lo ves arriba a la derecha en platform.claude.com. Sirve para avisarte cuántos días te quedan.', tipo='number', valores=valores, empresa=empresa, errores=errores, extra='min=0 step=0.01 inputmode=decimal') }}
+    <div class="acciones"><button class="boton" type="button" data-probar-boton="claude">Probar la llave</button></div>
+    <div class="resultado" data-resultado="claude" aria-live="polite"></div>
+  </section>
+
+  <section class="paso" aria-labelledby="p4">
+    <p class="numero-paso">Paso 4 de {{ total }}</p>
+    <h2 id="p4">Los datos de WhatsApp (Meta)</h2>
+    <p class="suave">Son cuatro datos de tu app de Meta. Con ellos el bot puede leer y responder los mensajes del número del negocio.</p>
+    <details class="guia" open>
+      <summary>Dónde los encuentro</summary>
+      <ol>
+        <li>Entra a <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> con tu Facebook. Si no tienes una app, toca <strong>Crear app</strong> y elige el caso de uso de WhatsApp.</li>
+        <li><strong>App ID</strong> y <strong>App Secret</strong>: en <strong>Configuración de la app → Básica</strong>. El App Secret aparece al tocar <strong>Mostrar</strong> (te pide tu contraseña de Facebook).</li>
+        <li><strong>Phone number ID</strong> y <strong>token</strong>: en <strong>WhatsApp → Configuración de la API</strong>. Al principio Meta te da un número de prueba y un token que dura unas 24 horas.</li>
+        <li>Para un token que no vence: en <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer">Configuración del negocio → Usuarios del sistema</a> crea uno de administrador, asígnale la app y la cuenta de WhatsApp, y genera un token con los permisos <code>whatsapp_business_messaging</code> y <code>whatsapp_business_management</code>, sin vencimiento.</li>
+      </ol>
+      <p class="chico suave">Los nombres de los menús de Meta cambian seguido; si algo no se llama igual, busca el más parecido.</p>
+    </details>
+    {{ campo('meta_app_id', 'App ID', 'Solo números.', valores=valores, empresa=empresa, errores=errores, requerido=not admin, extra='inputmode=numeric') }}
+    {{ campo_secreto('meta_app_secret', 'App Secret', '32 letras y números.', mascaras, valores=valores, errores=errores, requerido=not admin) }}
+    {{ campo('phone_number_id', 'Phone number ID', 'Solo números. No es el número de teléfono.', valores=valores, empresa=empresa, errores=errores, requerido=not admin, extra='inputmode=numeric') }}
+    {{ campo_secreto('whatsapp_token', 'Token de WhatsApp', 'Un texto largo que suele empezar con EAA.', mascaras, valores=valores, errores=errores, requerido=not admin) }}
+    <div class="acciones"><button class="boton" type="button" data-probar-boton="meta">Probar la conexión</button></div>
+    <div class="resultado" data-resultado="meta" aria-live="polite"></div>
+  </section>
+
+  <section class="paso" aria-labelledby="p5">
+    <p class="numero-paso">Paso 5 de {{ total }}</p>
+    <h2 id="p5">Avisarle a Meta dónde está el bot</h2>
+    <p class="suave">Así Meta le pasa al bot cada mensaje que llega al número del negocio.</p>
+    <label for="w-url">Dirección (URL de devolución de llamada)</label>
+    <div class="copiable"><input id="w-url" type="text" value="{{ webhook_url }}" readonly><button class="boton" type="button" data-copiar="#w-url">Copiar</button></div>
+    <label for="w-token">Token de verificación</label>
+    <div class="copiable"><input id="w-token" type="text" value="{{ empresa.verify_token }}" readonly><button class="boton" type="button" data-copiar="#w-token">Copiar</button></div>
+    <details class="guia" open>
+      <summary>Cómo se hace</summary>
+      <ol>
+        <li>En tu app de Meta, entra a <strong>WhatsApp → Configuración</strong> y, en <strong>Webhook</strong>, toca <strong>Editar</strong>.</li>
+        <li>Pega la dirección y el token de verificación de arriba.</li>
+        <li>Toca <strong>Verificar y guardar</strong>. Si todo está bien, aquí abajo aparece <strong>Conectado</strong>.</li>
+        <li>Más abajo, en <strong>Campos del webhook</strong>, suscríbete a <code>messages</code>.</li>
+      </ol>
+    </details>
+    <div class="estado-webhook" data-webhook-estado aria-live="polite"><span class="punto pendiente" aria-hidden="true"></span><span>Esperando a Meta…</span></div>
+  </section>
+
+  {% if admin %}
+  <section class="paso" aria-labelledby="p6">
+    <p class="numero-paso">Paso 6 de {{ total }}</p>
+    <h2 id="p6">Ajustes</h2>
+    {{ campo('modelo', 'Modelo de Claude', 'claude-haiku-5-5 es rápido y económico.', valores=valores, empresa=empresa, errores=errores) }}
+    {{ campo('precio_entrada', 'Precio de entrada (USD por millón de tokens)', 'Para estimar el gasto. Haiku 5.5: 0.10.', tipo='number', valores=valores, empresa=empresa, errores=errores, extra='min=0 step=0.001 inputmode=decimal') }}
+    {{ campo('precio_salida', 'Precio de salida (USD por millón de tokens)', 'Haiku 5.5: 0.50.', tipo='number', valores=valores, empresa=empresa, errores=errores, extra='min=0 step=0.001 inputmode=decimal') }}
+    {{ campo('numeros_ignorados', 'Números que el bot no responde', 'Familia, proveedores, tú mismo. Separados por comas.', tipo='textarea', valores=valores, empresa=empresa, errores=errores) }}
+    {{ campo('pausa_horas', 'Horas de pausa al pasarle un chat al dueño', '', tipo='number', valores=valores, empresa=empresa, errores=errores, extra='min=0 step=0.5') }}
+    {{ campo('historial_limite', 'Mensajes de la conversación que recibe Claude', 'Más mensajes = más contexto y más gasto.', tipo='number', valores=valores, empresa=empresa, errores=errores, extra='min=2 step=1') }}
+    {{ campo('instrucciones_extra', 'Indicaciones adicionales para el bot', 'Se agregan al manual de esta empresa.', tipo='textarea', valores=valores, empresa=empresa, errores=errores) }}
+  </section>
+  {% endif %}
+
+  <section class="paso" aria-labelledby="pf">
+    <p class="numero-paso">Paso {{ total }} de {{ total }}</p>
+    <h2 id="pf">{{ 'Guardar' if admin else 'Revisar y enviar' }}</h2>
+    {% if admin %}
+      <p class="suave">Los secretos que dejes vacíos se mantienen como estaban.</p>
+    {% else %}
+      <p>Al enviar, el bot queda en prueba: solo te responde a ti. Escríbele al número del negocio desde tu celular personal para probarlo. Cuando revisemos que todo está bien, lo activamos para todos tus clientes.</p>
+    {% endif %}
+    <div class="acciones"><button class="boton principal" type="submit">{{ 'Guardar cambios' if admin else 'Enviar datos' }}</button></div>
+  </section>
+
+  <nav class="navegacion" aria-label="Pasos">
+    <button class="boton" type="button" data-anterior>Atrás</button>
+    <button class="boton principal" type="button" data-siguiente>Siguiente</button>
+  </nav>
+</form>
+{% endblock %}

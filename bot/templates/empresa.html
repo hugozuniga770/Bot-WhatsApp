@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_macros.html" import etiqueta_estado, medidor, lista_chequeos, SALUD %}
+{% set e = r.empresa %}
+{% set cr = r.credito %}
+{% block titulo %}{{ e.nombre }} · Bots de WhatsApp{% endblock %}
+{% block contenido %}
+<p><a href="{{ url_for('panel.inicio') }}">Todas las empresas</a></p>
+<div class="cabecera-empresa">
+  <h1>{{ e.nombre }}</h1>
+  {{ etiqueta_estado(e.estado) }}
+</div>
+<p class="suave">
+  {% if e.estado == 'borrador' %}Esperando que el dueño llene el enlace de alta (o llénalo tú en Editar).
+  {% elif e.estado == 'revision' %}En prueba: el bot solo le responde a {{ e.dueno_nombre or 'el dueño' }} ({{ e.dueno_numero | telefono }}). Verifica y actívalo cuando todo esté bien.
+  {% elif e.estado == 'activa' %}Activo: responde a todos los clientes.
+  {% else %}Pausado: no le responde a nadie.{% endif %}
+</p>
+
+{% if enlace %}
+<section class="caja destacada" id="enlace">
+  <h2>Enlace de alta</h2>
+  <p>Mándaselo al dueño del negocio. Sirve una sola vez y vence en 7 días. Copia el enlace ahora: por seguridad no se vuelve a mostrar.</p>
+  <div class="copiable">
+    <input id="enlace-alta" type="text" value="{{ enlace.url }}" readonly>
+    <button class="boton" type="button" data-copiar="#enlace-alta">Copiar</button>
+  </div>
+  <div class="acciones">
+    <a class="boton principal" href="https://wa.me/?text={{ ('Hola, para conectar el bot de WhatsApp de ' ~ e.nombre ~ ' llena este formulario desde tu celular. Te explica paso a paso dónde encontrar cada dato: ' ~ enlace.url) | urlencode }}" target="_blank" rel="noopener noreferrer">Enviar por WhatsApp</a>
+  </div>
+</section>
+{% endif %}
+
+<section class="tanque" id="creditos" aria-labelledby="t-credito">
+  <h2 id="t-credito" class="suave chico">Crédito de Claude</h2>
+  {% if cr.estado in ('ok', 'poco') %}
+    {% set d = cr.dias | duracion %}<div class="cifra">{{ d[0] }}<small>{{ d[1] }}</small></div>
+    <p>Alcanza aproximadamente hasta el {{ cr.hasta | fecha }}, al ritmo de {{ cr.gasto_diario | dinero }} por día.</p>
+  {% elif cr.estado == 'agotado' %}
+    <div class="cifra">0<small>días</small></div>
+    <p>Según lo contado, el saldo se terminó. Carga créditos en platform.claude.com y actualiza el saldo aquí.</p>
+  {% elif cr.estado == 'sin_uso' %}
+    <div class="cifra">{{ cr.restante | dinero }}</div>
+    <p>Todavía no hay uso para estimar cuántos días alcanza.</p>
+  {% else %}
+    <div class="cifra">—</div>
+    <p>No hay saldo cargado. Escribe cuánto tiene la cuenta en platform.claude.com para empezar a estimar.</p>
+  {% endif %}
+  {% if cr.estado != 'sin_saldo' %}
+    {{ medidor(cr.porcentaje) }}
+    <dl class="datos-credito">
+      <div><dt>Saldo estimado</dt><dd>{{ cr.restante | dinero }}</dd></div>
+      <div><dt>Cargado el {{ r.saldo_desde | fecha }}</dt><dd>{{ cr.saldo | dinero }}</dd></div>
+      <div><dt>Gastado desde entonces</dt><dd>{{ cr.gastado | dinero }}</dd></div>
+      <div><dt>Hoy</dt><dd>{{ r.hoy.tokens | tokens }} tokens</dd></div>
+    </dl>
+  {% endif %}
+  <details>
+    <summary>Actualizar saldo</summary>
+    <p class="suave chico">Mira el saldo real en platform.claude.com (arriba a la derecha) y escríbelo aquí. La estimación vuelve a contar desde hoy.</p>
+    <form method="post" action="{{ url_for('panel.saldo', eid=e.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <label for="saldo">Saldo actual en dólares</label>
+      <input id="saldo" name="saldo_usd" type="number" min="0" step="0.01" inputmode="decimal" required>
+      <div class="acciones"><button class="boton" type="submit">Guardar saldo</button></div>
+    </form>
+  </details>
+</section>
+
+<section class="seccion" aria-labelledby="t-salud">
+  <h2 id="t-salud"><span>¿Funciona todo?</span> <span class="etiqueta"><span class="punto {{ r.salud }}" aria-hidden="true"></span>{{ SALUD[r.salud] }}</span></h2>
+  <p class="suave chico">
+    {% if r.verificado %}Última verificación {{ hace(r.verificado) }}.{% else %}Todavía no se verificó.{% endif %}
+    Último mensaje de un cliente: {{ hace(r.actividad.get('mensaje')) }}. Última respuesta: {{ hace(r.actividad.get('respuesta')) }}.
+    {% if r.errores_24h %}<strong>{{ r.errores_24h }} error{{ '' if r.errores_24h == 1 else 'es' }} en las últimas 24 h.</strong>{% endif %}
+  </p>
+  {{ lista_chequeos(r.chequeos) }}
+  <div class="acciones">
+    <form class="en-linea" method="post" action="{{ url_for('panel.verificar', eid=e.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <button class="boton principal" type="submit" data-ocupado="Verificando…">Verificar todo</button>
+    </form>
+    <form class="en-linea" method="post" action="{{ url_for('panel.prueba', eid=e.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <button class="boton" type="submit" data-ocupado="Enviando…">Enviar mensaje de prueba</button>
+    </form>
+  </div>
+</section>
+
+<section class="seccion" aria-labelledby="t-uso">
+  <h2 id="t-uso">Uso de los últimos 14 días</h2>
+  {% set ancho = 20 %}
+  <svg class="grafico" viewBox="0 0 280 92" role="img" aria-label="Tokens por día de los últimos 14 días">
+    {% for d in r.serie %}
+      {% set alto = (d.altura * 0.7) | round(1) %}
+      <rect class="barra-dia {% if loop.last %}hoy{% endif %}" x="{{ loop.index0 * ancho + 3 }}" y="{{ 76 - alto }}" width="14" height="{{ [alto, 0.8] | max }}" rx="2">
+        <title>{{ d.dia | fecha }}: {{ d.tokens | tokens }} tokens, {{ d.llamadas }} respuestas, {{ d.costo | dinero }}</title>
+      </rect>
+    {% endfor %}
+    <line class="piso" x1="0" y1="76.5" x2="280" y2="76.5"/>
+    <text x="3" y="89">{{ r.serie[0].dia | fecha }}</text>
+    <text x="277" y="89" text-anchor="end">hoy</text>
+  </svg>
+  <p class="suave chico">Toca una barra para ver el detalle del día. Precio usado: {{ e.precio_entrada }} y {{ e.precio_salida }} USD por millón de tokens de entrada y de salida ({{ e.modelo }}).</p>
+</section>
+
+<section class="seccion" aria-labelledby="t-estado">
+  <h2 id="t-estado">Estado del bot</h2>
+  <div class="acciones">
+    {% for valor, texto in [('revision', 'Poner en prueba'), ('activa', 'Activar para todos'), ('pausada', 'Pausar')] if valor != e.estado %}
+    <form class="en-linea" method="post" action="{{ url_for('panel.cambiar_estado', eid=e.id) }}" data-confirmar="¿{{ texto }}?">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="estado" value="{{ valor }}">
+      <button class="boton {% if valor == 'activa' %}principal{% endif %}" type="submit">{{ texto }}</button>
+    </form>
+    {% endfor %}
+    <a class="boton" href="{{ url_for('panel.editar', eid=e.id) }}">Editar datos y llaves</a>
+  </div>
+</section>
+
+<section class="seccion" aria-labelledby="t-conexion">
+  <h2 id="t-conexion">Conexión</h2>
+  <dl class="datos-credito">
+    <div><dt>Número del dueño</dt><dd>{{ e.dueno_numero | telefono }}</dd></div>
+    <div><dt>Phone number ID</dt><dd>{{ e.phone_number_id or '—' }}</dd></div>
+    <div><dt>Llave de Claude</dt><dd>{{ mascaras.anthropic_key or '—' }}</dd></div>
+    <div><dt>Token de Meta</dt><dd>{{ mascaras.whatsapp_token or '—' }}</dd></div>
+  </dl>
+  <label for="wh-url">Dirección del webhook (para Meta)</label>
+  <div class="copiable"><input id="wh-url" type="text" value="{{ webhook_url }}" readonly><button class="boton" type="button" data-copiar="#wh-url">Copiar</button></div>
+  <label for="wh-token">Token de verificación</label>
+  <div class="copiable"><input id="wh-token" type="text" value="{{ e.verify_token }}" readonly><button class="boton" type="button" data-copiar="#wh-token">Copiar</button></div>
+  <div class="acciones">
+    <form class="en-linea" method="post" action="{{ url_for('panel.nuevo_enlace', eid=e.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <button class="boton" type="submit">Generar enlace de alta nuevo</button>
+    </form>
+  </div>
+</section>
+
+<section class="seccion" aria-labelledby="t-actividad">
+  <h2 id="t-actividad">Actividad</h2>
+  {% if eventos %}
+  <ul class="eventos">
+    {% for ev in eventos %}
+    <li class="{{ 'error' if ev.tipo == 'error' else '' }}"><span>{{ ev.detalle }}</span><time datetime="{{ ev.fecha.isoformat() }}">{{ hace(ev.fecha) }}</time></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="suave">Sin actividad todavía.</p>{% endif %}
+</section>
+
+<section class="seccion">
+  <details>
+    <summary>Ver el manual que recibe Claude</summary>
+    <pre class="manual">{{ manual }}</pre>
+  </details>
+</section>
+{% endblock %}

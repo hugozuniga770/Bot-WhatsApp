@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17302B">
+  <meta name="robots" content="noindex">
+  <title>{% block titulo %}Bots de WhatsApp{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  {% block barra %}
+  <header class="barra">
+    <a class="marca" href="{{ url_for('panel.inicio') }}">Bots de WhatsApp</a>
+    {% if session.get('admin') %}
+    <form class="en-linea" method="post" action="{{ url_for('panel.salir') }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <button class="boton texto" type="submit">Salir</button>
+    </form>
+    {% endif %}
+  </header>
+  {% endblock %}
+  <main class="contenido">
+    {% with mensajes = get_flashed_messages(with_categories=true) %}
+      {% for categoria, mensaje in mensajes %}
+        <div class="aviso {{ categoria }}" role="status">{{ mensaje }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block contenido %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,51 @@
+{% set ESTADOS = {'borrador': 'Esperando datos', 'revision': 'En prueba', 'activa': 'Activo', 'pausada': 'Pausado'} %}
+{% set SALUD = {'ok': 'Todo bien', 'atencion': 'Revisa algo', 'falla': 'Hay un problema', 'pendiente': 'Falta verificar'} %}
+{% set ICONOS = {'ok': '✓', 'atencion': '!', 'falla': '×', 'pendiente': '…'} %}
+
+{% macro etiqueta_estado(estado) -%}
+<span class="etiqueta {{ estado }}">{{ ESTADOS.get(estado, estado) }}</span>
+{%- endmacro %}
+
+{% macro medidor(porcentaje) -%}
+<svg class="medidor" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="Queda el {{ porcentaje }} % del saldo">
+  <rect class="base" x="0" y="0" width="100" height="6" rx="3"/>
+  <rect class="nivel" x="0" y="0" width="{{ [porcentaje, 0] | max }}" height="6" rx="3"/>
+</svg>
+{%- endmacro %}
+
+{% macro lista_chequeos(chequeos) -%}
+<ul class="chequeos">
+  {% for ch in chequeos %}
+  <li class="{{ ch.estado }}">
+    <span class="icono" aria-hidden="true">{{ ICONOS.get(ch.estado, '…') }}</span>
+    <div><strong>{{ ch.titulo }}</strong><p>{{ ch.detalle }}</p></div>
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% macro campo(nombre, titulo, ayuda='', tipo='text', valores=None, empresa=None, errores={}, requerido=False, autocompletar='off', extra='') -%}
+{% set valor = (valores.get(nombre) if valores else (empresa.get(nombre) if empresa else '')) or '' %}
+<div class="campo {% if errores.get(nombre) %}con-error{% endif %}">
+  <label for="c-{{ nombre }}">{{ titulo }}{% if ayuda %}<span class="ayuda">{{ ayuda }}</span>{% endif %}</label>
+  {% if tipo == 'textarea' %}
+  <textarea id="c-{{ nombre }}" name="{{ nombre }}" {% if requerido %}required{% endif %}>{{ valor }}</textarea>
+  {% else %}
+  <input id="c-{{ nombre }}" name="{{ nombre }}" type="{{ tipo }}" value="{{ valor }}" autocomplete="{{ autocompletar }}"
+         {% if requerido %}required{% endif %} {{ extra }}>
+  {% endif %}
+  {% if errores.get(nombre) %}<p class="error-campo">{{ errores[nombre] }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro campo_secreto(nombre, titulo, ayuda, mascaras, valores=None, errores={}, requerido=False) -%}
+<div class="campo {% if errores.get(nombre) %}con-error{% endif %}">
+  <label for="c-{{ nombre }}">{{ titulo }}
+    <span class="ayuda">{% if mascaras.get(nombre) %}Ya está guardada ({{ mascaras[nombre] }}). Déjalo vacío para mantenerla.{% else %}{{ ayuda }}{% endif %}</span>
+  </label>
+  <input id="c-{{ nombre }}" name="{{ nombre }}" type="password" autocomplete="off" spellcheck="false"
+         value="{{ (valores.get(nombre) if valores else '') or '' }}"
+         {% if requerido and not mascaras.get(nombre) %}required{% endif %}>
+  {% if errores.get(nombre) %}<p class="error-campo">{{ errores[nombre] }}</p>{% endif %}
+</div>
+{%- endmacro %}

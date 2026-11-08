@@ -1,137 +1,122 @@
-# Despliegue paso a paso
+# Despliegue paso a paso (v2.0)
 
-- Proyecto: Bot de WhatsApp con Claude (negocio de mi mamá) · Responsable: Hugo Zúñiga
-- Fecha: 07/11/2026 · Estado: **pendiente**, ningún paso ejecutado todavía
+- Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
+- Fecha: 08/11/2026 · Estado: v1.0 subida; pasos de la v2.0 **pendientes**
 - Relacionados: [README](../README.md) · [Arquitectura](arquitectura.md) · [Decisiones](decisiones.md)
 
-Cada paso termina con una **comprobación**. Si la comprobación no da lo esperado, no pases al siguiente: mira la tabla de problemas al final. Los menús de Meta, Render y Atlas cambian de nombre seguido; si algo no se llama igual, busca el equivalente.
+Cada paso termina con una **comprobación**. Si no da lo esperado, no pases al siguiente: mira la tabla de problemas al final. Los menús de Meta, Render y Neon cambian de nombre seguido; si algo no se llama igual, busca el más parecido.
 
-## Paso 0. Subir el proyecto a GitHub
+## Paso 0. Subir la v2.0 a GitHub
 
-Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp). La primera vez (repositorio vacío), en PowerShell:
+`$env:USERPROFILE` es tu carpeta de usuario (`C:\Users\hugor` en la PC, `C:\Users\sebas` en la laptop), así que los mismos comandos sirven en las dos. Antes de trabajar en una máquina, haz `git pull`.
 
 ```powershell
-cd C:\Users\hugor\Downloads
-git clone https://github.com/hugozuniga770/Bot-WhatsApp.git
-cd Bot-WhatsApp
-Expand-Archive -Path "C:\Users\hugor\Downloads\bot-whatsapp-v1.0.zip" -DestinationPath . -Force
+cd $env:USERPROFILE\Downloads\Bot-WhatsApp
+git pull origin main
+Expand-Archive -Path "$env:USERPROFILE\Downloads\parche-v2.0.zip" -DestinationPath . -Force
 git add -A
 git status
-git commit -m "v1.0: bot de WhatsApp con Claude, pruebas, CI y despliegue en Render"
-git branch -M main
-git push -u origin main
-```
-
-Cada versión siguiente llega como un parche y se aplica igual que en Reserva de Salas:
-
-```powershell
-cd C:\Users\hugor\Downloads\Bot-WhatsApp
-git pull origin main
-Expand-Archive -Path "C:\Users\hugor\Downloads\parche-vX.Y.zip" -DestinationPath . -Force
-git add -A
-git commit -m "vX.Y: qué cambia"
+git commit -m "v2.0: multiempresa, panel, enlaces de alta, llaves cifradas y estimación de crédito"
 git push origin main
 ```
 
-**Comprobación:** en `git status`, el archivo `.env` **no** aparece (si aparece, no hagas commit y revisa `.gitignore`). En GitHub, la pestaña **Actions** muestra el workflow "CI - pruebas del bot" en verde, con 17 passed. El repositorio puede ser público o privado: en ningún caso tiene llaves ni datos de clientes.
+La v2.0 ya incluye lo del parche v1.1: no hace falta aplicarlo aparte.
 
-## Paso 1. Créditos y llave de Claude
+**Comprobación:**
+- En `git status` no aparece ningún `.env`.
+- En GitHub → **Actions**, "CI - pruebas del bot" sale en verde con 69 passed y 0 saltadas.
 
-1. En [platform.claude.com](https://platform.claude.com), compra créditos de uso. Para empezar alcanza con el monto mínimo; la misma página dice que USD 5 basta para crear y probar una primera integración. Los créditos vencen un año después de la compra.
-2. Ve a **Settings → API keys** y crea una llave. Se muestra una sola vez: cópiala a tu `.env` como `ANTHROPIC_API_KEY`.
-3. Si la consola ofrece un límite de gasto mensual, ponlo bajo mientras pruebas.
+## Paso 1. Base de datos en Neon
 
-**Comprobación:** la llave empieza con `sk-ant-`. En el paso 6, el bot responde con texto de Claude y no con la disculpa de BOT-RF-06.
+1. En [neon.com](https://neon.com) (puedes entrar con GitHub) crea un proyecto en el plan gratis, en la región **AWS US East (N. Virginia)**.
+2. En **Connect**, copia la cadena de conexión: empieza con `postgresql://` y termina con `?sslmode=require`.
 
-Si la tarjeta es rechazada, revisa con tu banco que esté habilitada para compras internacionales en línea.
+Usa una base **nueva**. Si probaste la v1.1 contra Neon, esa base tiene tablas viejas y el servicio no va a arrancar hasta que uses otra.
 
-## Paso 2. App de Meta y número de prueba
+**Comprobación:** tienes la cadena copiada. Las tablas las crea el servicio al arrancar.
 
-1. En [developers.facebook.com](https://developers.facebook.com) crea una app y elige el caso de uso de WhatsApp.
-2. En **WhatsApp → API Setup** vas a ver el número de prueba, el **Phone number ID** y un **token temporal**. Cópialos a `PHONE_NUMBER_ID` y `WHATSAPP_TOKEN`.
-3. En esa misma pantalla, agrega tu celular como destinatario de prueba (te llega un código por WhatsApp).
-4. En **App settings → Basic**, muestra y copia el **App secret** a `APP_SECRET`.
-5. Inventa una palabra para `VERIFY_TOKEN`.
+## Paso 2. Servicio en Render
 
-**Comprobación:** desde API Setup, el botón para enviar el mensaje de prueba te hace llegar la plantilla `hello_world` a tu celular.
-
-## Paso 3. Base de datos en MongoDB Atlas
-
-1. En [mongodb.com/atlas](https://www.mongodb.com/atlas) crea un clúster gratuito (M0).
-2. **Database Access:** crea un usuario con contraseña. Usa una contraseña sin símbolos raros, o tendrás que codificarlos en la cadena de conexión.
-3. **Network Access:** permite `0.0.0.0/0`. Render gratis no tiene una IP fija, así que no se puede limitar por IP; la protección es el usuario y la contraseña.
-4. **Connect → Drivers → Python:** copia la cadena `mongodb+srv://...`, reemplaza `<password>` y ponla en `MONGODB_URI`.
-
-**Comprobación:** con `MONGODB_URI` en tu `.env`, `python -m bot` muestra `Almacen: MongoDB (base bot_whatsapp)` y no se detiene con un error de conexión.
-
-## Paso 4. Servicio en Render
-
-1. Entra a [render.com](https://render.com) con tu cuenta de GitHub y dale acceso al repositorio.
+1. Entra a [render.com](https://render.com) con tu cuenta de GitHub y dale acceso al repositorio `Bot-WhatsApp`.
 2. **New → Blueprint**, elige el repositorio. Render lee `render.yaml`.
-3. Te pide los valores de las variables marcadas `sync: false`: copia los de tu `.env` (deja `DUENA_NUMERO` vacío si todavía no lo usas).
+3. Te pide dos valores:
+   - `DATABASE_URL`: la cadena de Neon.
+   - `ADMIN_PASSWORD`: la contraseña del panel. Usa una larga y guárdala en tu gestor de contraseñas.
 4. Aplica y espera el primer despliegue.
+5. **Guarda la `CLAVE_MAESTRA`:** Render la genera sola. Cópiala desde el servicio → **Environment** a tu gestor de contraseñas. Si algún día se pierde o cambia, las llaves de las empresas ya no se pueden leer y hay que volver a cargarlas.
 
-**Comprobación:** en **Logs** aparece `Booting worker` y `Almacen: MongoDB`. `https://<tu-servicio>.onrender.com/` muestra `ok`. El nombre exacto de la URL está arriba en el panel del servicio.
+**Comprobación:** en **Logs** aparece `Almacen: PostgreSQL`, y `https://<tu-servicio>.onrender.com/salud` muestra `ok`.
 
-## Paso 5. Webhook en Meta
+## Paso 3. Entrar al panel
 
-1. Abre `https://<tu-servicio>.onrender.com/` en el navegador para despertar el servicio.
-2. En Meta: **WhatsApp → Configuration → Webhook → Edit**.
-   - Callback URL: `https://<tu-servicio>.onrender.com/webhook`
-   - Verify token: la misma palabra de `VERIFY_TOKEN`
-3. Guarda y, en **Webhook fields**, suscríbete a `messages`.
+Abre `https://<tu-servicio>.onrender.com/` en tu celular, entra con tu contraseña y guárdalo en la pantalla de inicio (menú del navegador → **Agregar a pantalla de inicio**).
 
-**Comprobación:** Meta acepta el webhook y en los logs de Render aparece `Webhook verificado por Meta`.
+**Comprobación:** ves la pantalla **Empresas** vacía.
 
-## Paso 6. Prueba de punta a punta
+## Paso 4. La primera empresa
 
-Desde tu celular (destinatario de prueba), escríbele al número de prueba:
+1. En **Agregar una empresa**, escribe el nombre del negocio y toca **Crear y generar enlace**.
+2. Tienes dos caminos:
+   - **Que lo llene el dueño:** toca **Enviar por WhatsApp**. El enlace sirve una vez y vence en 7 días.
+   - **Llenarlo tú:** en el detalle de la empresa, toca **Editar datos y llaves**. Son los mismos pasos, más uno de ajustes.
+3. Los pasos 3 y 4 del formulario explican dónde sacar cada llave y tienen botones **Probar**. Para probar sin tocar el número real, usa el número de prueba que Meta da en **WhatsApp → Configuración de la API**, y agrega tu celular como destinatario de prueba.
+4. El paso 5 muestra la dirección del webhook y su token para pegarlos en Meta. Cuando Meta los verifica, ese paso cambia solo a **Conectado**. Después suscríbete a `messages`.
 
-| Prueba | Qué haces | Qué debe pasar |
-|---|---|---|
-| Respuesta (RF-01) | Escribes "Hola" | Respuesta de Claude en segundos |
-| Memoria (RF-02) | Preguntas algo que dependa del mensaje anterior | Responde con el contexto |
-| Solo texto (RF-03) | Mandas un audio | Llega el aviso de "solo puedo leer texto" |
-| Derivación (RF-04) | Escribes "quiero hablar con una persona" | Aviso de que la dueña le escribe; tu siguiente mensaje no recibe respuesta; si pusiste `DUENA_NUMERO`, llega el aviso |
-| Datos (Mongo) | Abres Atlas → Browse Collections | Ves `conversaciones` con tu número y `mensajes_atendidos` |
-| Dormido (D-02) | Esperas 20 min y escribes | Responde, con alrededor de un minuto de demora |
+**Comprobación:** al enviar, la empresa aparece **En prueba**. Las pruebas del formulario salieron en verde y el webhook dice **Conectado**.
 
-Para volver a probar la derivación con tu número, borra `pausado_hasta` de tu documento en Atlas o espera las 12 h.
+## Paso 5. Prueba en vivo
 
-## Paso 7. Token permanente
+1. Desde el celular del dueño (el número que se cargó como "tu número personal"), escríbele al número del negocio.
+2. Prueba lo básico: un saludo, una pregunta sobre el negocio, un audio y "quiero hablar con una persona".
 
-El token de API Setup vence en unas 24 h. Para uno permanente:
+**Comprobación:**
+- El bot le responde **solo** al dueño.
+- En el panel, **Actividad** muestra la derivación.
+- **Uso de los últimos 14 días** muestra la barra de hoy.
 
-1. En la configuración del negocio en Meta (Business Settings), crea un **usuario del sistema** con rol de administrador.
+## Paso 6. Verificar y activar
+
+1. Toca **Verificar todo**. Cada línea debe salir con ✓. Si algo sale en rojo, el texto dice qué arreglar.
+2. Toca **Enviar mensaje de prueba**. Llega al dueño si él le escribió al número en las últimas 24 h; si no, el panel lo explica.
+3. Escribe el saldo real de la cuenta de Claude en **Actualizar saldo**.
+4. Toca **Activar para todos**.
+
+**Comprobación:** la empresa dice **Activo** y la lista muestra los días de crédito.
+
+## Paso 7. Token permanente de Meta
+
+El token de **Configuración de la API** vence en unas 24 h, y la verificación lo marca en amarillo. Para uno permanente:
+
+1. En [Configuración del negocio → Usuarios del sistema](https://business.facebook.com/settings/system-users), crea un usuario de administrador.
 2. Asígnale la app y la cuenta de WhatsApp.
-3. Genera un token con los permisos `whatsapp_business_messaging` y `whatsapp_business_management`, sin vencimiento.
-4. Reemplaza `WHATSAPP_TOKEN` en Render (Environment) y guarda: Render reinicia solo.
+3. Genera un token con `whatsapp_business_messaging` y `whatsapp_business_management`, sin vencimiento.
+4. Pégalo en **Editar datos y llaves** (paso 4) y vuelve a verificar.
 
-**Comprobación:** al día siguiente el bot sigue respondiendo y no hay errores con `code 190` en los logs.
+**Comprobación:** la verificación dice "El token no vence".
 
-## Paso 8. Número de tu mamá — pendiente (D-05)
+## Paso 8. El número real de tu mamá — pendiente (D-05)
 
-No se ejecuta todavía. Opciones a decidir:
-
-| Opción | Tu mamá sigue usando su app | Costo | Trabajo |
+| Opción | Su app de WhatsApp Business | Costo | Trabajo |
 |---|---|---|---|
-| A. Proveedor de WhatsApp con coexistencia | Sí, con el mismo número | Depende del proveedor | Se conecta el número a través del proveedor |
-| B. Número nuevo solo para el bot | Su número personal no cambia; el del bot no tiene app | Un chip | Registrar el número en la Cloud API |
-| C. Pasar su número actual solo a la API | No | — | No recomendado |
+| A. Proveedor con coexistencia | Sigue funcionando con el mismo número | Depende del proveedor | Conectar el número por el proveedor y adaptar `whatsapp.py` si usa su propia API |
+| B. Número nuevo para el bot | Su número no cambia; el del bot no tiene app | Un chip | Registrar el número en la Cloud API |
+| C. Pasar su número actual solo a la API | Deja de funcionar | — | No recomendado |
 
-Además, para un número real Meta puede pedir verificación del negocio y aprobación del nombre visible, y un método de pago para mensajes que inicie el negocio (las respuestas a clientes que escriben primero no se cobran).
+Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso activo en WhatsApp Business. Mientras tanto, que tu mamá lo siga usando normal y complete el perfil del negocio.
 
 ## Problemas frecuentes
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
-| Meta no acepta el webhook | `VERIFY_TOKEN` distinto, o el servicio estaba dormido | Iguala la palabra; abre `/` para despertarlo y reintenta |
-| Log: `Peticion con firma invalida` | `APP_SECRET` mal copiado | Cópialo de nuevo desde App settings → Basic |
-| Log: `Meta rechazo el envio` con `code 190` | Token vencido o mal copiado | Token nuevo, o el permanente (paso 7) |
-| Log: `Meta rechazo el envio` con `131030` | Con el número de prueba, ese celular no está en los destinatarios | Agrégalo en API Setup |
-| Log: `Fallo la llamada al asistente` con `401` | `ANTHROPIC_API_KEY` mala | Crea otra en platform.claude.com |
-| Log: `Fallo la llamada al asistente` por saldo | Sin créditos | Recarga en platform.claude.com |
-| El bot se detiene con `Faltan estas variables` | Variable vacía | Llénala en `.env` o en Render → Environment |
-| Error `ServerSelectionTimeoutError` al arrancar | Atlas no deja entrar | Revisa `0.0.0.0/0`, usuario y contraseña |
+| El servicio no arranca: `Faltan estas variables` | Falta `ADMIN_PASSWORD` o `CLAVE_MAESTRA` | Render → Environment |
+| El servicio no arranca: "tablas de una versión anterior" | La base tiene tablas de la v1.x | Usa una base nueva en Neon |
+| `No se pudo leer una llave guardada` | Cambió la `CLAVE_MAESTRA` | Restaura la anterior, o vuelve a cargar las llaves de cada empresa |
+| "Demasiados intentos" al entrar | 5 contraseñas incorrectas | Espera 15 minutos |
+| "El formulario venció" | Se abrió hace mucho o en otra sesión | Recarga la página |
+| Meta no acepta el webhook | Token de verificación distinto, o el servicio estaba dormido | Cópialo con el botón; abre `/salud` para despertarlo y reintenta |
+| Webhook en "Esperando a Meta…" | Falta tocar Verificar y guardar en Meta | Paso 5 del formulario |
+| La prueba dice "últimas 24 horas" | Regla de WhatsApp | El dueño le escribe primero al número del negocio |
+| "no está en la lista de destinatarios" | Número de prueba de Meta | Agrega el celular en Configuración de la API |
+| Claude "no tiene créditos" | Saldo en cero | Carga en platform.claude.com y actualiza el saldo en el panel |
 | El primer mensaje tarda ~1 min | Render gratis se había dormido | Esperado (D-02) |
-| Render no despliega después de un push | El CI falló (`checksPass`, D-09) | Mira la pestaña Actions y corrige |
+| Render no despliega tras un push | El CI falló (`checksPass`, D-09) | Mira Actions |

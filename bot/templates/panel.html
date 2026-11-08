@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import etiqueta_estado, medidor, SALUD %}
+{% block titulo %}Empresas · Bots de WhatsApp{% endblock %}
+{% block contenido %}
+<h1>Empresas</h1>
+
+{% if resumenes %}
+<ul class="empresas">
+  {% for r in resumenes %}
+  {% set e = r.empresa %}
+  <li>
+    <a class="empresa-fila" href="{{ url_for('panel.detalle', eid=e.id) }}">
+      <div>
+        <h3>{{ e.nombre }}</h3>
+        <div class="linea-estado">
+          {{ etiqueta_estado(e.estado) }}
+          <span class="punto {{ r.salud }}" aria-hidden="true"></span><span>{{ SALUD[r.salud] }}</span>
+          <span>{{ r.hoy.llamadas }} respuesta{{ '' if r.hoy.llamadas == 1 else 's' }} hoy</span>
+        </div>
+      </div>
+      <div class="dias {{ r.credito.estado }}">
+        {% if r.credito.estado in ('ok', 'poco') %}
+          {% set d = r.credito.dias | duracion %}<strong>{{ d[0] }}</strong><span>{{ d[1] }} de crédito</span>
+        {% elif r.credito.estado == 'agotado' %}
+          <strong>0</strong><span>sin crédito</span>
+        {% elif r.credito.estado == 'sin_uso' %}
+          <strong>{{ r.credito.restante | dinero | replace('USD ', '$') }}</strong><span>sin uso aún</span>
+        {% else %}
+          <strong>—</strong><span>sin saldo cargado</span>
+        {% endif %}
+      </div>
+      {% if r.credito.estado not in ('sin_saldo',) %}{{ medidor(r.credito.porcentaje) }}{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="vacio">
+  <h2>Todavía no hay empresas</h2>
+  <p class="suave">Agrega la primera: te damos un enlace para que el dueño cargue sus datos desde su celular, o los llenas tú.</p>
+</div>
+{% endif %}
+
+<section class="seccion">
+  <h2>Agregar una empresa</h2>
+  <form method="post" action="{{ url_for('panel.nueva') }}">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <label for="nombre">Nombre del negocio</label>
+    <input id="nombre" name="nombre" type="text" required placeholder="Por ejemplo: Boutique Las Palmas">
+    <div class="acciones"><button class="boton principal" type="submit">Crear y generar enlace</button></div>
+  </form>
+</section>
+{% endblock %}
