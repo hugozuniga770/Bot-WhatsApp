@@ -90,6 +90,22 @@ def salud():
     return "ok", 200
 
 
+@webhook.get("/privacidad/<slug>")
+def privacidad(slug):
+    """Política de privacidad de una empresa (Meta la pide para publicar la app)."""
+    from flask import render_template
+    empresa = ctx().almacen.empresa_por_slug(slug) or abort(404)
+    return render_template("privacidad.html", empresa=empresa)
+
+
+@webhook.get("/eliminar-datos/<slug>")
+def eliminar_datos(slug):
+    """Instrucciones para borrar los datos (Meta las pide para publicar la app)."""
+    from flask import render_template
+    empresa = ctx().almacen.empresa_por_slug(slug) or abort(404)
+    return render_template("eliminar_datos.html", empresa=empresa)
+
+
 @webhook.get("/salud/base")
 def salud_base():
     """Comprueba (y despierta) la base. El formulario la llama antes de guardar."""

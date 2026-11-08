@@ -107,6 +107,8 @@ def detalle(eid):
         mascaras=E.mascaras(empresa, c.cifrador),
         enlace=enlace,
         webhook_url=f"{url_base()}/webhook/{empresa['slug']}",
+        privacidad_url=f"{url_base()}/privacidad/{empresa['slug']}",
+        eliminar_url=f"{url_base()}/eliminar-datos/{empresa['slug']}",
         manual=componer(c.config.plantilla_manual, empresa),
     )
 
@@ -208,6 +210,21 @@ def saldo(eid):
         c.almacen.registrar_evento(eid, "saldo", f"Saldo actualizado a USD {float(valor):.2f}.", c.ahora())
         flash("Saldo actualizado. La estimación cuenta desde hoy.", "ok")
     return redirect(url_for(".detalle", eid=eid) + "#creditos")
+
+
+@panel.post("/empresas/<int:eid>/borrar-cliente")
+@requiere_admin
+def borrar_cliente(eid):
+    c = ctx()
+    _empresa_o_404(eid)
+    numero = reglas.normalizar_numero(request.form.get("numero", ""))
+    if not 8 <= len(numero) <= 15:
+        flash("Escribe el número del cliente con código de país, por ejemplo 591 70000000.", "error")
+    else:
+        n = c.almacen.borrar_cliente(eid, numero)
+        c.almacen.registrar_evento(eid, "borrado", f"Datos del cliente ...{numero[-4:]} borrados ({n} mensajes).", c.ahora())
+        flash(f"Listo: se borraron {n} mensajes y la pausa de ese número." if n else "Ese número no tenía mensajes guardados.", "ok")
+    return redirect(url_for(".detalle", eid=eid) + "#datos")
 
 
 @panel.route("/empresas/<int:eid>/editar", methods=["GET", "POST"])

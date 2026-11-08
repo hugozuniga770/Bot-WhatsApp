@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Eliminar tus datos · {{ empresa.nombre }}{% endblock %}
+{% block barra %}{% endblock %}
+{% block contenido %}
+<article class="legal">
+  <h1>Cómo eliminar tus datos</h1>
+  <p class="suave">{{ empresa.nombre }} · Asistente de WhatsApp</p>
+  <ol>
+    <li>Escríbenos por WhatsApp, al mismo número con el que conversaste: <strong>«Quiero borrar mis datos»</strong>.</li>
+    <li>El asistente registra tu pedido y se lo pasa a {{ empresa.dueno_nombre or 'una persona del negocio' }}.</li>
+    <li>Borramos tu conversación guardada en un plazo máximo de 30 días y te confirmamos por el mismo medio.</li>
+  </ol>
+  <p class="suave">Meta (WhatsApp) guarda sus propias copias de los mensajes según sus condiciones; para esas, revisa la configuración de privacidad de tu WhatsApp.</p>
+  <p><a href="{{ url_for('webhook.privacidad', slug=empresa.slug) }}">Ver la política de privacidad</a></p>
+</article>
+{% endblock %}

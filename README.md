@@ -1,9 +1,9 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.3
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.4
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
-- Estado al 08/11/2026: v2.1 en línea en Render y CI en verde (72 pruebas). La v2.3 reemplaza el pool de conexiones por uno propio, que abre la conexión en el momento y así despierta a Neon (era la causa del PoolTimeout del 08/11). Además, el formulario no se envía si la base no responde, para no perder las llaves: 78 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.3 y terminar de cargar la primera empresa.
+- Estado al 08/11/2026: v2.1 en línea en Render y CI en verde (72 pruebas). v2.3 en línea (78 pruebas): la empresa Sentirse Única está cargada y sus llaves verificadas. La v2.4 agrega las páginas de privacidad y de borrado de datos que Meta exige para publicar la app; sin publicarla, Meta no entrega los mensajes reales. 82 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.4, publicar la app en Meta y la prueba con mensajes reales.
 
 ## 1. Qué hace
 
@@ -36,6 +36,7 @@ Todo se maneja desde un **panel** pensado para el celular:
 | BOT-RF-17 | Cuenta los tokens por día y estima el saldo y para cuántos días alcanza |
 | BOT-RF-18 | En prueba, el bot solo le responde al dueño; pausado o sin datos, a nadie |
 | BOT-RF-19 | No responde a los números de la lista de ignorados (familia, proveedores) |
+| BOT-RF-20 | Cada empresa tiene su página pública de privacidad y de borrado de datos (las pide Meta). Un cliente que pide borrar sus datos se deriva al dueño, y desde el panel se borra su conversación |
 
 ## 2. Cómo funciona
 
@@ -67,8 +68,9 @@ Detalle en [docs/arquitectura.md](docs/arquitectura.md).
 1. **Agregar:** en el panel escribes el nombre del negocio y tocas **Crear y generar enlace**. Aparece el enlace con un botón **Enviar por WhatsApp**.
 2. **Alta:** el dueño abre el enlace y sigue 6 pasos: su negocio, lo que el bot debe saber, la llave de Claude, los datos de Meta, conectar el webhook y enviar. Cada paso dice dónde está cada dato, y los botones **Probar** lo comprueban en el momento. El paso del webhook cambia solo a **Conectado** cuando Meta lo verifica. Si prefieres, lo llenas tú desde **Editar datos y llaves**.
 3. **Prueba:** al enviar, la empresa queda **En prueba** y el bot solo le responde al dueño, que le escribe al número del negocio desde su celular personal.
-4. **Verificar y activar:** tocas **Verificar todo** y **Enviar mensaje de prueba**, y luego **Activar para todos**. Si algo falla, el panel no deja activar y explica qué arreglar.
-5. **Día a día:** la lista muestra cuántos días de crédito quedan por empresa. Cuando cargues más créditos en platform.claude.com, actualiza el saldo en el panel.
+4. **Publicar la app en Meta** (una vez por app): en Configuración de la app → Básica pones el ícono, la categoría y las dos direcciones que muestra el panel en **Conexión** (privacidad y borrado de datos). Después la publicas. Sin esto, Meta no le entrega al bot los mensajes reales.
+5. **Verificar y activar:** tocas **Verificar todo** y **Enviar mensaje de prueba**, y luego **Activar para todos**. Si algo falla, el panel no deja activar y explica qué arreglar.
+6. **Día a día:** la lista muestra cuántos días de crédito quedan por empresa. Cuando cargues más créditos en platform.claude.com, actualiza el saldo en el panel.
 
 ## 4. Requisitos
 
@@ -98,8 +100,8 @@ Para que Meta llegue a tu PC mientras pruebas: `cloudflared tunnel --url http://
 python -m pytest -v
 ```
 
-- **En tu PC:** 68 passed y 10 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
-- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 78. El CI falla si alguna se salta.
+- **En tu PC:** 71 passed y 11 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
+- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 82. El CI falla si alguna se salta.
 
 Ninguna prueba usa la red: Meta, Claude y las verificaciones se reemplazan por dobles. [docs/pruebas.md](docs/pruebas.md) relaciona cada test con su requisito.
 
@@ -134,7 +136,7 @@ bot/
   formato.py        dinero, fechas y tiempos en las pantallas
   templates/        pantallas (Jinja)
   static/           estilos y JavaScript
-tests/              78 tests y conftest.py con los dobles
+tests/              82 tests y conftest.py con los dobles
 docs/               arquitectura, despliegue, decisiones, pruebas, cambios, glosario y capturas
 instrucciones.md    plantilla común del manual (vale para todas las empresas)
 render.yaml         cómo Render crea y arranca el servicio

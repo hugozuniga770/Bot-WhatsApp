@@ -24,6 +24,7 @@ Para leer el código y los `docs/` sin perderse. Si algo de aquí contradice a o
 | **Token de WhatsApp** | Permiso para enviar mensajes. El de Configuración de la API vence en unas 24 h; el de un usuario del sistema no vence. |
 | **Calidad del número** | Calificación de Meta (alta, media, baja) según bloqueos y reportes de clientes. Baja = límites. |
 | **Ventana de 24 h** | Tiempo en que el negocio puede escribir libremente después de que alguien le escribe. Fuera de ella, solo plantillas. |
+| **Publicar la app** | Pasar la app de Meta de "sin publicar" a activa. Sin esto, Meta no entrega mensajes reales al bot. Pide URL de privacidad y de borrado de datos, que da el panel (BOT-RF-20). |
 | **Coexistencia** | Usar el mismo número en la app de WhatsApp Business y en la API a la vez (D-05). |
 | **Derivar / marca** | Pasar el chat al dueño: Claude termina con `[PASAR_A_HUMANO]` (BOT-RF-04). |
 | **Números ignorados** | Familia, proveedores y otros números a los que el bot nunca responde (BOT-RF-19). |

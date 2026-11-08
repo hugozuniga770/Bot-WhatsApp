@@ -210,3 +210,19 @@ def test_RF11_si_la_base_no_responde_dos_veces_se_avisa_claro():
     # Y si solo falla el primer intento (Neon despertando), el segundo funciona
     pool, _ = _pool_falso(conectar_falla=1)
     assert _almacen_con(pool).ping() is True
+
+
+def test_RF20_borrar_un_cliente_borra_solo_su_conversacion_en_esa_empresa(almacen_contrato, dos, ahora):
+    a, b = dos
+    # Dado el mismo cliente en dos empresas, y otro cliente en la primera
+    almacen_contrato.agregar(a["id"], CLIENTE, "user", "hola A", ahora)
+    almacen_contrato.agregar(a["id"], CLIENTE, "assistant", "respuesta A", ahora)
+    almacen_contrato.pausar(a["id"], CLIENTE, ahora + timedelta(hours=1))
+    almacen_contrato.agregar(a["id"], DUENO, "user", "otro cliente", ahora)
+    almacen_contrato.agregar(b["id"], CLIENTE, "user", "hola B", ahora)
+    # Cuando se borran sus datos en la primera
+    borrados = almacen_contrato.borrar_cliente(a["id"], CLIENTE)
+    # Entonces se borran sus 2 mensajes y su pausa, y nada más
+    assert borrados == 2
+    assert almacen_contrato.historial(a["id"], CLIENTE) == [] and almacen_contrato.pausado_hasta(a["id"], CLIENTE) is None
+    assert len(almacen_contrato.historial(a["id"], DUENO)) == 1 and len(almacen_contrato.historial(b["id"], CLIENTE)) == 1

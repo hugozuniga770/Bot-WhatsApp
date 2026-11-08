@@ -64,6 +64,24 @@ Abre `https://<tu-servicio>.onrender.com/` en tu celular, entra con tu contrase�
 
 **Comprobación:** al enviar, la empresa aparece **En prueba**. Las pruebas del formulario salieron en verde y el webhook dice **Conectado**.
 
+## Paso 4b. Publicar la app en Meta
+
+Mientras la app está "sin publicar", Meta solo le manda al bot los avisos de prueba de su panel: **los mensajes reales no llegan**, ni siquiera los del administrador. Para publicarla:
+
+1. En el panel del bot, sección **Conexión → Para publicar la app en Meta**, copia las dos direcciones: política de privacidad y eliminación de datos.
+2. En developers.facebook.com → tu app → **Configuración de la app → Básica**, completa:
+   - la **URL de la política de privacidad**;
+   - la **URL de instrucciones para eliminar los datos**;
+   - el **ícono de la app** (1024 × 1024, puede ser el logo del negocio);
+   - la **categoría** (por ejemplo, "Negocios y páginas" o "Mensajería").
+
+   Luego toca **Guardar cambios**.
+3. Publica la app desde el botón o interruptor de publicar (los nombres cambian: "Publicar", "Modo: Activo"). Meta revisa que esté todo lo anterior.
+
+**Comprobación:** la app ya no dice "Sin publicar". Al escribirle al número desde tu celular, el panel muestra en **Actividad** el último mensaje de un cliente.
+
+Las páginas de privacidad y borrado se generan solas para cada empresa, con su nombre. Son un texto base: revísalas con el negocio.
+
 ## Paso 5. Prueba en vivo
 
 1. Desde el celular del dueño (el número que se cargó como "tu número personal"), escríbele al número del negocio.

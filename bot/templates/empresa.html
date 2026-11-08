@@ -129,6 +129,12 @@
   <div class="copiable"><input id="wh-url" type="text" value="{{ webhook_url }}" readonly><button class="boton" type="button" data-copiar="#wh-url">Copiar</button></div>
   <label for="wh-token">Token de verificación</label>
   <div class="copiable"><input id="wh-token" type="text" value="{{ e.verify_token }}" readonly><button class="boton" type="button" data-copiar="#wh-token">Copiar</button></div>
+  <h3 class="seccion">Para publicar la app en Meta</h3>
+  <p class="suave chico">En developers.facebook.com → tu app → Configuración de la app → Básica.</p>
+  <label for="url-privacidad">URL de la política de privacidad</label>
+  <div class="copiable"><input id="url-privacidad" type="text" value="{{ privacidad_url }}" readonly><button class="boton" type="button" data-copiar="#url-privacidad">Copiar</button></div>
+  <label for="url-eliminar">URL de instrucciones para eliminar los datos</label>
+  <div class="copiable"><input id="url-eliminar" type="text" value="{{ eliminar_url }}" readonly><button class="boton" type="button" data-copiar="#url-eliminar">Copiar</button></div>
   <div class="acciones">
     <form class="en-linea" method="post" action="{{ url_for('panel.nuevo_enlace', eid=e.id) }}">
       <input type="hidden" name="csrf" value="{{ csrf() }}">
@@ -146,6 +152,19 @@
     {% endfor %}
   </ul>
   {% else %}<p class="suave">Sin actividad todavía.</p>{% endif %}
+</section>
+
+<section class="seccion" id="datos">
+  <details>
+    <summary>Borrar los datos de un cliente</summary>
+    <p class="suave chico">Si un cliente pide que borren sus datos, escribe su número: se borra su conversación guardada y su pausa. Meta y WhatsApp guardan sus propias copias según sus reglas.</p>
+    <form method="post" action="{{ url_for('panel.borrar_cliente', eid=e.id) }}" data-confirmar="¿Borrar la conversación guardada de ese número? No se puede deshacer.">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <label for="numero-borrar">Número del cliente</label>
+      <input id="numero-borrar" name="numero" type="tel" required placeholder="591 70000000">
+      <div class="acciones"><button class="boton" type="submit">Borrar sus datos</button></div>
+    </form>
+  </details>
 </section>
 
 <section class="seccion">

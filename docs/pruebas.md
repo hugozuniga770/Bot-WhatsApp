@@ -16,17 +16,20 @@ Los tests de `test_verificaciones.py` imitan las respuestas reales de Claude y d
 
 Los tests del almacén (`test_almacen.py`) son un **contrato** (D-12): cada uno corre con `AlmacenMemoria` y con `AlmacenPostgres`. Los de Postgres necesitan `TEST_DATABASE_URL`:
 
-- **En tu PC**, sin esa variable, salen **68 passed, 10 skipped**.
-- **En el CI**, un PostgreSQL 17 temporal; salen **78 passed**, y el CI falla si alguno se salta.
+- **En tu PC**, sin esa variable, salen **71 passed, 11 skipped**.
+- **En el CI**, un PostgreSQL 17 temporal; salen **82 passed**, y el CI falla si alguno se salta.
 - **Para correrlos en tu PC**, usa una base **de prueba**: los tests vacían las tablas. **Nunca la de producción.**
 
 ## 2. Estado
 
 | Corrida | Fecha | Resultado |
 |---|---|---|
+| v2.4 · entorno de armado, sin base | 08/11/2026 | **71 passed, 11 skipped** |
+| v2.4 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **82 passed**, 0 saltadas |
+| v2.4 · GitHub Actions | — | **Pendiente** |
+| v2.3 · GitHub Actions | 08/11/2026 | **78 passed** (run #5, commit 31b1233); en Render, Sentirse Única guardada con Claude, número y token verificados |
 | v2.3 · entorno de armado, sin base | 08/11/2026 | **68 passed, 10 skipped** |
 | v2.3 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **78 passed**, 0 saltadas |
-| v2.3 · GitHub Actions | — | **Pendiente** |
 | v2.2 · entorno de armado, sin base | 08/11/2026 | **65 passed, 10 skipped** |
 | v2.2 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **75 passed**, 0 saltadas |
 | v2.1 · GitHub Actions | 08/11/2026 | **72 passed** (run #3, commit 4d9219a) |
@@ -82,7 +85,7 @@ Un servidor que acepta la conexión y nunca contesta: con `connect_timeout`, el 
 
 ## 4. Requisito → test
 
-Requisitos cubiertos: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11, RF-12, RF-13, RF-14, RF-15, RF-16, RF-17, RF-18, RF-19.
+Requisitos cubiertos (más RF-20, agregado en v2.4): RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11, RF-12, RF-13, RF-14, RF-15, RF-16, RF-17, RF-18, RF-19.
 
 | Requisito | Test | Archivo | Estado |
 |---|---|---|---|
@@ -156,6 +159,9 @@ Requisitos cubiertos: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF
 | BOT-RF-18 | `test_RF18_en_prueba_solo_le_responde_al_dueno` | `test_servicios.py` | Pasa |
 | BOT-RF-18 | `test_RF18_pausada_o_en_borrador_no_responde_a_nadie` | `test_servicios.py` | Pasa |
 | BOT-RF-19 | `test_RF19_los_numeros_ignorados_no_reciben_respuesta` | `test_servicios.py` | Pasa |
+| BOT-RF-20 | `test_RF20_borrar_un_cliente_borra_solo_su_conversacion_en_esa_empresa` [memoria, postgres] | `test_almacen.py` | Pasa |
+| BOT-RF-20 | `test_RF20_las_paginas_de_privacidad_y_borrado_son_publicas_y_propias_de_cada_empresa` | `test_panel.py` | Pasa |
+| BOT-RF-20 | `test_RF20_el_admin_borra_los_datos_de_un_cliente_desde_el_panel` | `test_panel.py` | Pasa |
 
 "Pasa" se refiere a la corrida con PostgreSQL del entorno de armado. Cuando corras en tu PC y en Actions, actualiza la sección 2.
 

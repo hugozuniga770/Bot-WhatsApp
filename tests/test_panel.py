@@ -182,3 +182,29 @@ def test_RF11_salud_base_responde_si_la_base_funciona_y_503_si_no(web, almacen, 
     # Entonces responde 503 en JSON, y el formulario sabe que no debe enviar
     r = web.get("/salud/base")
     assert r.status_code == 503 and "error" in r.get_json()
+
+
+def test_RF20_las_paginas_de_privacidad_y_borrado_son_publicas_y_propias_de_cada_empresa(web, empresa):
+    # Dada una empresa
+    privacidad = web.get(f"/privacidad/{empresa['slug']}")
+    borrado = web.get(f"/eliminar-datos/{empresa['slug']}")
+    # Entonces sus páginas se ven sin contraseña, con su nombre, y se enlazan entre sí
+    assert privacidad.status_code == 200 and "Tienda de Prueba" in privacidad.get_data(as_text=True)
+    assert f"/eliminar-datos/{empresa['slug']}" in privacidad.get_data(as_text=True)
+    assert borrado.status_code == 200 and "Quiero borrar mis datos" in borrado.get_data(as_text=True)
+    # Y una empresa que no existe da 404
+    assert web.get("/privacidad/no-existe").status_code == 404
+
+
+def test_RF20_el_admin_borra_los_datos_de_un_cliente_desde_el_panel(admin, empresa, almacen, ahora):
+    web, csrf = admin
+    almacen.agregar(empresa["id"], "59170000001", "user", "Hola", ahora)
+    # Cuando escribe el número con + y espacios y confirma
+    r = web.post(f"/panel/empresas/{empresa['id']}/borrar-cliente", data={"csrf": csrf, "numero": "+591 7000 0001"}, follow_redirects=True)
+    # Entonces se borra, se avisa y queda en la actividad
+    assert "se borraron 1 mensajes" in r.get_data(as_text=True)
+    assert almacen.historial(empresa["id"], "59170000001") == []
+    assert almacen.eventos(empresa["id"], 1)[0]["tipo"] == "borrado"
+    # Y un número mal escrito se explica
+    malo = web.post(f"/panel/empresas/{empresa['id']}/borrar-cliente", data={"csrf": csrf, "numero": "123"}, follow_redirects=True)
+    assert "con código de país" in malo.get_data(as_text=True)

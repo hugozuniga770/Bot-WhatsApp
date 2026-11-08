@@ -205,3 +205,9 @@ pre.manual { white-space: pre-wrap; font: .88rem/1.5 ui-monospace, Consolas, mon
 @media (prefers-reduced-motion: no-preference) {
   .tanque .nivel { transition: width .6s ease-out; }
 }
+
+/* ------------------------------------------------ páginas públicas (privacidad) */
+.legal { max-width: 640px; margin: 2rem auto 0; }
+.legal h2 { font-size: 1.1rem; margin-top: 1.6rem; }
+.legal ol { padding-left: 1.2rem; }
+.legal li { margin: .5rem 0; }

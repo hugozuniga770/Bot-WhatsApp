@@ -254,6 +254,13 @@ class AlmacenMemoria:
     def ping(self) -> bool:
         return True
 
+    def borrar_cliente(self, empresa_id: int, numero: str) -> int:
+        """Borra la conversación y la pausa de un cliente. Devuelve cuántos mensajes borró."""
+        with self._lock:
+            borrados = len(self._mensajes.pop((empresa_id, numero), []))
+            self._pausas.pop((empresa_id, numero), None)
+            return borrados
+
     def es_nuevo(self, empresa_id: int, mensaje_id: str, ahora: datetime) -> bool:
         """True la primera vez que se ve un mensaje; False si Meta lo reenvia."""
         with self._lock:
@@ -365,6 +372,14 @@ class AlmacenPostgres:
     def ping(self) -> bool:
         """Una consulta mínima. Si Neon dormía, esto lo despierta."""
         return self._uno("SELECT 1") == (1,)
+
+    def borrar_cliente(self, empresa_id: int, numero: str) -> int:
+        """Borra la conversación y la pausa de un cliente. Devuelve cuántos mensajes borró."""
+        def borrar(con):
+            n = con.execute("DELETE FROM mensajes WHERE empresa_id = %s AND numero = %s", (empresa_id, numero)).rowcount
+            con.execute("DELETE FROM pausas WHERE empresa_id = %s AND numero = %s", (empresa_id, numero))
+            return n
+        return self._con(borrar)
 
     def _uno(self, sql, params=()):
         return self._con(lambda con: con.execute(sql, params).fetchone())
