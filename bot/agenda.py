@@ -250,3 +250,39 @@ def resumen_paciente(citas: list[dict]) -> dict:
         "citas": sum(1 for c in citas if c["estado"] != "cancelada"),
         "pagado": sum(c["adelanto"] or 0 for c in citas) + sum(c["cobrado"] or 0 for c in citas if c["estado"] == "atendida"),
     }
+
+
+# ------------------------------------------------------------------ cobros y adelantos (v3.1)
+def leer_cobro(form, sedes: list[str], actual: dict) -> tuple[dict, dict]:
+    """El formulario de Cobros: (configuración, errores). El QR se maneja aparte (es un archivo)."""
+    errores = {}
+    nuevo = {"activo": form.get("activo") == "1", "qr_id": actual.get("qr_id"),
+             "instrucciones": form.get("instrucciones", "").strip()[:800],
+             "aviso_numero": reglas.normalizar_numero(form.get("aviso_numero", ""))}
+    for campo, nombre, minimo, maximo in (("porcentaje", "El porcentaje", 1, 100), ("plazo_horas", "El plazo", 0.5, 48)):
+        try:
+            valor = float((form.get(campo) or "").replace(",", "."))
+            if not minimo <= valor <= maximo:
+                raise ValueError
+            nuevo[campo] = valor
+        except ValueError:
+            errores[campo] = f"{nombre} va de {minimo:g} a {maximo:g}."
+    if nuevo["aviso_numero"] and not 8 <= len(nuevo["aviso_numero"]) <= 15:
+        errores["aviso_numero"] = "Escribe el número con código de país, por ejemplo 591 70000000."
+    nuevo["valoracion"], nuevo["ubicaciones"] = {}, {}
+    for i, sede in enumerate(sedes):
+        texto = (form.get(f"valoracion_{i}") or "").replace(",", ".").strip()
+        if texto:
+            try:
+                precio = float(texto)
+                if precio < 0:
+                    raise ValueError
+                nuevo["valoracion"][sede] = precio
+            except ValueError:
+                errores[f"valoracion_{i}"] = "Escribe solo el precio en bolivianos, por ejemplo 250."
+        ubicacion = " ".join((form.get(f"ubicacion_{i}") or "").split())[:300]
+        if ubicacion:
+            nuevo["ubicaciones"][sede] = ubicacion
+    if nuevo["activo"] and not nuevo["valoracion"]:
+        errores["activo"] = "Para que el bot agende, carga el precio de la valoración de al menos una sede."
+    return nuevo, errores

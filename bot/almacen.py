@@ -126,6 +126,19 @@ CREATE TABLE IF NOT EXISTS citas (
     actualizada TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS citas_por_fecha ON citas (empresa_id, inicio);
+-- v3.1 (etapa 2): reservas por WhatsApp con adelanto y comprobante
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS adelanto_pedido NUMERIC(10, 2) NOT NULL DEFAULT 0;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS reserva_vence TIMESTAMPTZ;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS comprobante_id INT;
+
+CREATE TABLE IF NOT EXISTS archivos (
+    id          SERIAL PRIMARY KEY,
+    empresa_id  INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    tipo        TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    datos       BYTEA NOT NULL,
+    creado      TIMESTAMPTZ NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS bloqueos (
     id          SERIAL PRIMARY KEY,
@@ -140,10 +153,12 @@ CAMPOS_USUARIO = ("id", "empresa_id", "usuario", "nombre", "rol", "clave_hash", 
                   "creado", "ultimo_ingreso")
 CAMPOS_PACIENTE = ("id", "empresa_id", "nombre", "telefono", "creado")
 CAMPOS_CITA = ("id", "empresa_id", "paciente_id", "inicio", "fin", "sede", "servicio", "estado", "adelanto",
-               "cobrado", "metodo_pago", "origen", "creada", "actualizada")
+               "cobrado", "metodo_pago", "origen", "creada", "actualizada",
+               "adelanto_pedido", "reserva_vence", "comprobante_id")
 EDITABLES_USUARIO = ("nombre", "rol", "clave_hash", "debe_cambiar", "activo", "ultimo_ingreso")
 EDITABLES_PACIENTE = ("nombre", "telefono")
-EDITABLES_CITA = ("paciente_id", "inicio", "fin", "sede", "servicio", "estado", "adelanto", "cobrado", "metodo_pago")
+EDITABLES_CITA = ("paciente_id", "inicio", "fin", "sede", "servicio", "estado", "adelanto", "cobrado", "metodo_pago",
+                  "adelanto_pedido", "reserva_vence", "comprobante_id")
 
 
 
@@ -465,10 +480,12 @@ class AlmacenMemoria:
     def crear_cita(self, empresa_id: int, datos: dict, ahora: datetime) -> dict:
         with self._lock:
             id_ = max(self._citas, default=0) + 1
-            cita = {"sede": "", "servicio": "", "adelanto": 0.0, "cobrado": None, "metodo_pago": "", "origen": "panel"}
+            cita = {"sede": "", "servicio": "", "adelanto": 0.0, "cobrado": None, "metodo_pago": "", "origen": "panel",
+                    "adelanto_pedido": 0.0, "reserva_vence": None, "comprobante_id": None}
             cita.update({k: v for k, v in datos.items() if k in CAMPOS_CITA})
             cita.update(id=id_, empresa_id=empresa_id, creada=ahora, actualizada=ahora)
             cita["adelanto"] = float(cita["adelanto"] or 0)
+            cita["adelanto_pedido"] = float(cita["adelanto_pedido"] or 0)
             self._citas[id_] = cita
             return self._con_paciente(cita)
 
@@ -495,11 +512,24 @@ class AlmacenMemoria:
             if not c or c["empresa_id"] != empresa_id:
                 return None
             c.update({k: v for k, v in cambios.items() if k in EDITABLES_CITA})
-            for campo in ("adelanto", "cobrado"):
+            for campo in ("adelanto", "cobrado", "adelanto_pedido"):
                 if c.get(campo) is not None:
                     c[campo] = float(c[campo])
             c["actualizada"] = ahora
             return self._con_paciente(c)
+
+    # ------------------------------------------------ archivos (comprobantes, QR de cobro)
+    def guardar_archivo(self, empresa_id: int, tipo: str, mime: str, datos: bytes, ahora: datetime) -> int:
+        with self._lock:
+            self._archivos = getattr(self, "_archivos", {})
+            id_ = max(self._archivos, default=0) + 1
+            self._archivos[id_] = {"id": id_, "empresa_id": empresa_id, "tipo": tipo, "mime": mime, "datos": bytes(datos), "creado": ahora}
+            return id_
+
+    def archivo(self, empresa_id: int, archivo_id: int) -> dict | None:
+        with self._lock:
+            a = getattr(self, "_archivos", {}).get(archivo_id)
+            return dict(a) if a and a["empresa_id"] == empresa_id else None
 
     # ------------------------------------------------ agenda: días bloqueados
     def crear_bloqueo(self, empresa_id: int, desde: date, hasta: date, motivo: str) -> dict:
@@ -800,11 +830,13 @@ class AlmacenPostgres:
     def _cita_de_fila(fila) -> dict:
         cita = dict(zip(CAMPOS_CITA + ("paciente_nombre", "paciente_telefono"), fila))
         cita["adelanto"] = float(cita["adelanto"])
+        cita["adelanto_pedido"] = float(cita["adelanto_pedido"] or 0)
         cita["cobrado"] = float(cita["cobrado"]) if cita["cobrado"] is not None else None
         return cita
 
     def crear_cita(self, empresa_id: int, datos: dict, ahora: datetime) -> dict:
-        valores = {"sede": "", "servicio": "", "adelanto": 0, "cobrado": None, "metodo_pago": "", "origen": "panel"}
+        valores = {"sede": "", "servicio": "", "adelanto": 0, "cobrado": None, "metodo_pago": "", "origen": "panel",
+                   "adelanto_pedido": 0, "reserva_vence": None, "comprobante_id": None}
         valores.update({k: v for k, v in datos.items() if k in CAMPOS_CITA and k not in ("id", "empresa_id", "creada", "actualizada")})
         columnas = list(valores) + ["empresa_id", "creada", "actualizada"]
         fila = self._uno(f"INSERT INTO citas ({', '.join(columnas)}) VALUES ({', '.join(['%s'] * len(columnas))}) RETURNING id",
@@ -831,6 +863,20 @@ class AlmacenPostgres:
         fila = self._uno(f"UPDATE citas SET {', '.join(sets)} WHERE empresa_id = %s AND id = %s RETURNING id",
                          (*cambios.values(), ahora, empresa_id, cita_id))
         return self.cita(empresa_id, cita_id) if fila else None
+
+    # ------------------------------------------------ archivos (comprobantes, QR de cobro)
+    def guardar_archivo(self, empresa_id: int, tipo: str, mime: str, datos: bytes, ahora: datetime) -> int:
+        return self._uno("INSERT INTO archivos (empresa_id, tipo, mime, datos, creado) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                         (empresa_id, tipo, mime, bytes(datos), ahora))[0]
+
+    def archivo(self, empresa_id: int, archivo_id: int) -> dict | None:
+        fila = self._uno("SELECT id, empresa_id, tipo, mime, datos, creado FROM archivos WHERE empresa_id = %s AND id = %s",
+                         (empresa_id, archivo_id))
+        if not fila:
+            return None
+        a = dict(zip(("id", "empresa_id", "tipo", "mime", "datos", "creado"), fila))
+        a["datos"] = bytes(a["datos"])
+        return a
 
     # ------------------------------------------------ agenda: días bloqueados
     def crear_bloqueo(self, empresa_id: int, desde: date, hasta: date, motivo: str) -> dict:

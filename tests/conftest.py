@@ -40,6 +40,18 @@ class WhatsAppFalso:
         self.enviados.append((numero, texto))
         return Envio(self.ok, None if self.ok else 131047, "" if self.ok else "fuera de la ventana")
 
+    # v3.1: comprobantes (fotos) y QR de cobro
+    archivo = (b"\x89PNG-comprobante", "image/png")
+    descarga_ok = True
+
+    def descargar_media(self, media_id):
+        self.descargados = getattr(self, "descargados", []) + [media_id]
+        return (True, self.archivo) if self.descarga_ok else (False, (None, "No se pudo bajar"))
+
+    def enviar_imagen(self, numero, enlace, texto=""):
+        self.imagenes = getattr(self, "imagenes", []) + [(numero, enlace, texto)]
+        return Envio(self.ok)
+
 
 class AsistenteFalso:
     def __init__(self):
@@ -47,10 +59,19 @@ class AsistenteFalso:
         self.error = None
         self.historiales = []
 
-    def responder(self, historial):
+    # v3.1: herramientas que el doble "decide" usar, en orden, antes de responder
+    herramientas_a_usar = ()
+
+    def responder(self, historial, extra_sistema="", herramientas=None, ejecutar=None):
         self.historiales.append([dict(m) for m in historial])
+        self.extra_sistema = extra_sistema
         if self.error:
             raise self.error
+        self.resultados = []
+        if ejecutar:
+            for nombre, entrada in self.herramientas_a_usar:
+                entrada = entrada(self.resultados) if callable(entrada) else entrada
+                self.resultados.append(ejecutar(nombre, entrada))
         texto = self.respuestas.pop(0) if len(self.respuestas) > 1 else self.respuestas[0]
         return Respuesta(texto, entrada=1000, salida=50)
 

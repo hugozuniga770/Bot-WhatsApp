@@ -220,6 +220,7 @@ input[type=date], input[type=time], input[type=search] {
 .pestanas { display: flex; gap: .2rem; overflow-x: auto; padding: 0 .8rem; background: var(--superficie); border-bottom: 1px solid var(--linea); }
 .pestanas a { padding: .75rem .8rem; font-weight: 700; text-decoration: none; color: var(--tinta-suave); border-bottom: 3px solid transparent; white-space: nowrap; }
 .pestanas a[aria-current=page] { color: var(--tinta); border-bottom-color: var(--tajibo); }
+@media (max-width: 430px) { .pestanas { gap: 0; padding: 0 .3rem; } .pestanas a { padding: .75rem .5rem; font-size: .95rem; } }
 .cabecera-agenda { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem; }
 .cabecera-agenda h1 { margin: 0; }
 .navegar { display: flex; gap: .4rem; }
@@ -263,3 +264,10 @@ table.mes { width: 100%; border-collapse: collapse; table-layout: fixed; margin-
 .lista-simple li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .3rem 1rem; padding: .75rem 0; border-bottom: 1px solid var(--linea); }
 .lista-simple a { text-decoration: none; }
 .buscador label { margin-top: .6rem; }
+
+/* ------------------------------------------------ pagos (v3.1) */
+.contador { display: inline-grid; place-items: center; min-width: 1.4rem; height: 1.4rem; padding: 0 .35rem;
+  border-radius: 999px; background: var(--tajibo); color: #fff; font-size: .78rem; font-weight: 800; margin-left: .2rem; }
+img.comprobante { display: block; max-width: 100%; max-height: 70vh; border-radius: var(--radio-chico); border: 1px solid var(--linea); margin: .6rem 0; }
+img.comprobante.qr { max-width: 220px; }
+.opcion-sola { display: flex; align-items: center; gap: .5rem; font-weight: 700; }

@@ -162,3 +162,19 @@ Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso act
 | Render no despliega tras un push | El CI falló (`checksPass`, D-09) | Mira Actions |
 | La agenda no muestra turnos libres | Falta cargar el horario, o el día está bloqueado | `/negocio/horario` |
 | "Usuario o contraseña incorrectos" en la agenda | Contraseña equivocada o acceso desactivado | En el panel → Agenda del negocio → **Contraseña nueva** o **Activar** |
+
+## Activar las reservas por WhatsApp (v3.1)
+
+1. Entra a `/negocio` con el usuario de la dueña. En **Horario**, carga los días, las sedes y las horas. Sin horario, el bot no tiene turnos para ofrecer.
+2. En **Pagos → Configurar cobros**:
+   - el precio de la valoración de cada sede, y su ubicación (dirección o enlace de Maps);
+   - el porcentaje del adelanto (50) y las horas para mandar el comprobante (2);
+   - los datos para pagar y, si hay, la imagen del QR de cobro;
+   - el WhatsApp de la asistente, que recibe el aviso de cada comprobante.
+
+   Marca **El bot agenda y cobra adelantos** y guarda.
+3. **Prueba con el número de prueba:** desde tu celular escribe "Quiero una cita de valoración". El bot pregunta el motivo y la sede, ofrece turnos, pide el nombre y aparta el horario. Manda una foto cualquiera como comprobante: la cita aparece en **Pagos** con el contador. Ábrela, revisa la foto y toca **Aprobar pago**. El bot te confirma la cita con la ubicación.
+
+**Comprobación:** en la Agenda, la cita pasa de "Pendiente de pago" a "Pago por revisar" y a "Confirmada". Si no mandas el comprobante en 2 horas, el horario se libera solo.
+
+**Sobre el aviso a la asistente:** WhatsApp solo deja mandárselo si ella le escribió al número del negocio en las últimas 24 horas. Si no, el aviso no llega (queda en la Actividad del panel) y ella ve el contador en la pestaña **Pagos**. El aviso con botones de Aprobar y Rechazar, con una plantilla de Meta, es la etapa 2b.

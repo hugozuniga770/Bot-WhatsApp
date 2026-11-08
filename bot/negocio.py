@@ -281,3 +281,127 @@ def borrar_bloqueo(bid):
         abort(404)
     flash("Bloqueo quitado.", "ok")
     return redirect(url_for(".horario") + "#bloqueos")
+
+
+# ------------------------------------------------------------------ pagos y cobros (v3.1, etapa 2)
+from . import reservas as R  # noqa: E402
+
+TIPOS_QR = ("image/png", "image/jpeg", "image/webp")
+CONFIRMACION = "✅ ¡Listo, {nombre}! Tu cita quedó confirmada: {dia} a las {hora} en {sede}.{ubicacion} Si necesitas reprogramar, avísanos con 24 horas de anticipación."
+RECHAZO = ("No pudimos confirmar tu pago{motivo}. Revisa el comprobante y mándalo de nuevo por aquí en las próximas "
+           "{plazo:g} horas para no perder tu horario del {dia} a las {hora}.")
+
+
+@negocio.app_context_processor
+def pagos_pendientes():
+    """Cantidad de comprobantes por revisar, para la pestaña Pagos."""
+    if not g.get("empresa") or not request.path.startswith("/negocio"):
+        return {}
+    c = ctx()
+    ahora = c.ahora()
+    citas = c.almacen.citas(g.empresa["id"], ahora - timedelta(days=2), ahora + timedelta(days=R.DIAS_A_MIRAR + 2))
+    return {"pagos_por_revisar": sum(1 for x in citas if x["estado"] == "por_revisar")}
+
+
+@negocio.get("/pagos")
+@requiere_usuario
+def pagos():
+    c = ctx()
+    ahora = c.ahora()
+    R.vencer(c.almacen, g.empresa, ahora) if R.activo(g.empresa) else None
+    citas = c.almacen.citas(g.empresa["id"], ahora - timedelta(days=2), ahora + timedelta(days=R.DIAS_A_MIRAR + 2))
+    return render_template("negocio/pagos.html",
+                           por_revisar=[x for x in citas if x["estado"] == "por_revisar"],
+                           esperando=[x for x in citas if x["estado"] == "pendiente_pago"])
+
+
+@negocio.get("/archivos/<int:aid>")
+@requiere_usuario
+def archivo(aid):
+    from flask import Response
+    a = ctx().almacen.archivo(g.empresa["id"], aid) or abort(404)
+    return Response(a["datos"], mimetype=a["mime"], headers={"Cache-Control": "private, max-age=3600"})
+
+
+@negocio.post("/citas/<int:cid>/aprobar")
+@requiere_usuario
+def aprobar_pago(cid):
+    c = ctx()
+    actual = _cita_o_404(cid)
+    if actual["estado"] not in ("por_revisar", "pendiente_pago"):
+        flash("Esa cita no tiene un pago por revisar.", "error")
+        return redirect(url_for(".cita", cid=cid))
+    try:
+        monto = float((request.form.get("monto") or "").replace(",", ".") or actual.get("adelanto_pedido") or 0)
+        if monto < 0:
+            raise ValueError
+    except ValueError:
+        flash("Escribe el monto recibido, por ejemplo 125.", "error")
+        return redirect(url_for(".cita", cid=cid))
+    ahora = c.ahora()
+    cita = c.almacen.actualizar_cita(g.empresa["id"], cid, {"estado": "confirmada", "adelanto": monto, "reserva_vence": None}, ahora)
+    r = R.resumen(cita, _zona())
+    ubicacion = R.cobro(g.empresa)["ubicaciones"].get(cita["sede"], "")
+    texto = CONFIRMACION.format(nombre=(cita["paciente_nombre"] or "").split(" ")[0], dia=r["dia"], hora=r["hora"], sede=r["sede"],
+                                ubicacion=f" Ubicación: {ubicacion}." if ubicacion else "")
+    envio = c.servicios.avisar(g.empresa, cita["paciente_telefono"], texto, ahora)
+    c.almacen.registrar_evento(g.empresa["id"], "pago", f"{g.usuario['nombre']} aprobó el adelanto de Bs {monto:g} de {cita['paciente_nombre']}.", ahora)
+    if envio:
+        flash("Pago aprobado: la cita quedó confirmada y el bot le avisó al paciente.", "ok")
+    else:
+        flash("Pago aprobado y cita confirmada, pero WhatsApp no dejó avisarle (pasaron más de 24 h desde su último mensaje). Avísale tú.", "error")
+    return redirect(url_for(".cita", cid=cid))
+
+
+@negocio.post("/citas/<int:cid>/rechazar")
+@requiere_usuario
+def rechazar_pago(cid):
+    c = ctx()
+    actual = _cita_o_404(cid)
+    if actual["estado"] != "por_revisar":
+        flash("Esa cita no tiene un comprobante por revisar.", "error")
+        return redirect(url_for(".cita", cid=cid))
+    ahora = c.ahora()
+    plazo = float(R.cobro(g.empresa)["plazo_horas"])
+    cita = c.almacen.actualizar_cita(g.empresa["id"], cid, {"estado": "pendiente_pago", "reserva_vence": ahora + timedelta(hours=plazo)}, ahora)
+    r = R.resumen(cita, _zona())
+    motivo = " ".join(request.form.get("motivo", "").split())[:200]
+    texto = RECHAZO.format(motivo=f": {motivo}" if motivo else "", plazo=plazo, dia=r["dia"], hora=r["hora"])
+    envio = c.servicios.avisar(g.empresa, cita["paciente_telefono"], texto, ahora)
+    c.almacen.registrar_evento(g.empresa["id"], "pago", f"{g.usuario['nombre']} rechazó el comprobante de {cita['paciente_nombre']}.", ahora)
+    flash("Comprobante rechazado. El paciente tiene un nuevo plazo para mandarlo." if envio
+          else "Comprobante rechazado, pero WhatsApp no dejó avisarle. Avísale tú.", "ok" if envio else "error")
+    return redirect(url_for(".cita", cid=cid))
+
+
+@negocio.route("/cobros", methods=["GET", "POST"])
+@requiere_usuario
+def cobros():
+    c = ctx()
+    if g.usuario["rol"] != "dueno":
+        flash("Los cobros los configura la dueña o el dueño.", "error")
+        return redirect(url_for(".semana"))
+    sedes = A.sedes(g.empresa)
+    actual = R.cobro(g.empresa)
+    errores = {}
+    if request.method == "POST":
+        nuevo, errores = A.leer_cobro(request.form, sedes, actual)
+        archivo_qr = request.files.get("qr")
+        if archivo_qr and archivo_qr.filename:
+            datos = archivo_qr.read(2 * 1024 * 1024 + 1)
+            if archivo_qr.mimetype not in TIPOS_QR:
+                errores["qr"] = "El QR tiene que ser una imagen PNG, JPG o WEBP."
+            elif len(datos) > 2 * 1024 * 1024:
+                errores["qr"] = "La imagen del QR pesa más de 2 MB."
+            else:
+                nuevo["qr_id"] = c.almacen.guardar_archivo(g.empresa["id"], "qr", archivo_qr.mimetype, datos, c.ahora())
+        if request.form.get("quitar_qr"):
+            nuevo["qr_id"] = None
+        if not errores:
+            g.empresa = c.almacen.actualizar_empresa(g.empresa["id"], {"cobro": nuevo}, c.ahora())
+            c.almacen.registrar_evento(g.empresa["id"], "cobros", f"{g.usuario['nombre']} actualizó los cobros y adelantos.", c.ahora())
+            flash("Cobros guardados." + (" El bot ya agenda y cobra adelantos." if R.activo(g.empresa) else ""), "ok")
+            return redirect(url_for(".cobros"))
+        actual = {**actual, **nuevo}
+    return render_template("negocio/cobros.html", cobro=actual, sedes=sedes, errores=errores,
+                           tiene_horario=bool((g.empresa.get("agenda") or {}).get("turnos")))

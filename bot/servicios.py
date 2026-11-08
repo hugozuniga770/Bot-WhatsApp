@@ -7,7 +7,7 @@ import logging
 import threading
 from datetime import datetime
 
-from . import reglas
+from . import reglas, reservas
 from .reglas import FallaDeEntrega, MensajeEntrante, ocultar_numero
 
 log = logging.getLogger(__name__)
@@ -28,14 +28,25 @@ DERIVADO = "derivado"
 ERROR = "error"
 VACIO = "vacio"
 FALLA_REGISTRADA = "falla_registrada"
+COMPROBANTE = "comprobante"
+COMPROBANTE_FALLIDO = "comprobante_fallido"
+
+RESPUESTA_COMPROBANTE = ("¡Gracias, {nombre}! Recibimos tu comprobante. Lo revisamos y te confirmamos la cita "
+                         "del {dia} a las {hora} en {sede} por este chat.")
+RESPUESTA_COMPROBANTE_ERROR = "No pude abrir el archivo 😕 ¿Me lo reenvías como foto, por favor?"
+AVISO_COMPROBANTE = ("🧾 Comprobante por revisar: {nombre} ({telefono}) mandó el adelanto de Bs {monto:g} para la "
+                     "valoración del {dia} a las {hora} en {sede}. Revísalo y apruébalo en el panel: {enlace}")
+AVISO_VENCIDA = ("Se liberó tu horario del {dia} a las {hora} en {sede}, porque no recibimos el comprobante a tiempo. "
+                 "Si quieres, escríbeme y te busco otro turno.")
 
 
 class Servicios:
     """`fabrica_whatsapp(empresa)` y `fabrica_asistente(empresa)` devuelven los clientes
     de esa empresa (con sus llaves ya descifradas). En los tests son dobles."""
 
-    def __init__(self, almacen, fabrica_whatsapp, fabrica_asistente, zona_horaria="America/La_Paz"):
+    def __init__(self, almacen, fabrica_whatsapp, fabrica_asistente, zona_horaria="America/La_Paz", url_base=""):
         self._almacen = almacen
+        self._url_base = (url_base or "").rstrip("/")
         self._whatsapp = fabrica_whatsapp
         self._asistente = fabrica_asistente
         self._zona = zona_horaria
@@ -59,11 +70,18 @@ class Servicios:
         if empresa["estado"] == "revision" and msg.numero != empresa.get("dueno_numero"):
             return EN_REVISION
 
+        if reservas.activo(empresa):
+            self.vencer_reservas(empresa, ahora)
+
         with self._lock_de(eid, msg.numero):
             if reglas.esta_pausado(self._almacen.pausado_hasta(eid, msg.numero), ahora):
                 return PAUSADO
 
             whatsapp = self._whatsapp(empresa)
+            if msg.tipo in ("image", "document") and msg.media_id and reservas.activo(empresa):
+                resultado = self._recibir_comprobante(empresa, msg, whatsapp, ahora)
+                if resultado:
+                    return resultado
             if msg.tipo != "text" or not msg.texto:
                 whatsapp.enviar_texto(msg.numero, RESPUESTA_NO_TEXTO)
                 return NO_TEXTO
@@ -72,8 +90,22 @@ class Servicios:
             limite = int(empresa.get("historial_limite") or 20)
             historial = reglas.recortar_historial(self._almacen.historial(eid, msg.numero), limite)
 
+            usa_agenda = reservas.activo(empresa)
+            enviar_qr = []
+
+            def ejecutar(nombre, entrada):
+                r = reservas.ejecutar_herramienta(nombre, entrada, self._almacen, empresa, msg.numero, ahora, self._zona)
+                if nombre == "reservar_turno" and r.get("ok") and r.get("se_envia_qr"):
+                    enviar_qr.append(True)
+                return r
+
             try:
-                respuesta = self._asistente(empresa).responder(historial)
+                if usa_agenda:
+                    respuesta = self._asistente(empresa).responder(
+                        historial, extra_sistema=reservas.instrucciones(empresa, ahora, self._zona),
+                        herramientas=reservas.HERRAMIENTAS, ejecutar=ejecutar)
+                else:
+                    respuesta = self._asistente(empresa).responder(historial)
             except Exception as e:
                 log.exception("Fallo el asistente de %s para %s", empresa.get("slug"), ocultar_numero(msg.numero))
                 self._almacen.registrar_evento(eid, "error", f"Claude no respondió: {e.__class__.__name__}", ahora)
@@ -89,6 +121,11 @@ class Servicios:
                     self._almacen.marcar_actividad(eid, "respuesta", ahora)
                 else:
                     self._almacen.registrar_evento(eid, "error", f"Meta no aceptó la respuesta (código {envio.codigo}).", ahora)
+            if enviar_qr and self._url_base:
+                qr = reservas.cobro(empresa)["qr_id"]
+                envio = whatsapp.enviar_imagen(msg.numero, f"{self._url_base}/pago/{empresa['slug']}/qr?v={qr}", "QR para pagar el adelanto")
+                if not envio:
+                    self._almacen.registrar_evento(eid, "error", f"No se pudo mandar el QR de cobro (código {envio.codigo}).", ahora)
 
             if pide_humano:
                 horas = float(empresa.get("pausa_horas") or 12)
@@ -100,6 +137,53 @@ class Servicios:
                 return DERIVADO
 
             return RESPONDIDO if texto else VACIO
+
+    def _recibir_comprobante(self, empresa: dict, msg: MensajeEntrante, whatsapp, ahora: datetime):
+        """Una foto o PDF de alguien con una reserva por pagar: se guarda y pasa a 'por revisar'."""
+        eid = empresa["id"]
+        cita = reservas.reserva_activa(self._almacen, eid, msg.numero, ahora)
+        if not cita or cita["estado"] not in ("pendiente_pago", "por_revisar"):
+            return None  # no hay nada que pagar: se responde como siempre
+        ok, datos = whatsapp.descargar_media(msg.media_id)
+        if not ok:
+            self._almacen.registrar_evento(eid, "error", f"No se pudo bajar un comprobante de ...{msg.numero[-4:]}: {datos[1]}", ahora)
+            whatsapp.enviar_texto(msg.numero, RESPUESTA_COMPROBANTE_ERROR)
+            return COMPROBANTE_FALLIDO
+        contenido, mime = datos
+        archivo_id = self._almacen.guardar_archivo(eid, "comprobante", mime, contenido, ahora)
+        cita = self._almacen.actualizar_cita(eid, cita["id"], {"estado": "por_revisar", "comprobante_id": archivo_id}, ahora)
+        r = reservas.resumen(cita, self._zona)
+        primer_nombre = (cita["paciente_nombre"] or "").split(" ")[0] or "gracias"
+        texto = RESPUESTA_COMPROBANTE.format(nombre=primer_nombre, dia=r["dia"], hora=r["hora"], sede=r["sede"])
+        self._almacen.agregar(eid, msg.numero, "user", "[Mandó la foto del comprobante de pago]", ahora)
+        if whatsapp.enviar_texto(msg.numero, texto):
+            self._almacen.agregar(eid, msg.numero, "assistant", texto, ahora)
+        self._almacen.registrar_evento(eid, "comprobante", f"Comprobante de {cita['paciente_nombre']} por revisar ({r['dia']} {r['hora']}).", ahora)
+        aviso = reglas.normalizar_numero(reservas.cobro(empresa)["aviso_numero"])
+        if aviso and aviso != msg.numero:
+            envio = whatsapp.enviar_texto(aviso, AVISO_COMPROBANTE.format(
+                nombre=cita["paciente_nombre"], telefono=f"+{msg.numero}", monto=cita.get("adelanto_pedido") or 0,
+                dia=r["dia"], hora=r["hora"], sede=r["sede"], enlace=f"{self._url_base}/negocio/citas/{cita['id']}"))
+            if not envio:
+                self._almacen.registrar_evento(eid, "error", f"No se pudo avisar a la asistente del comprobante (código {envio.codigo}).", ahora)
+        return COMPROBANTE
+
+    def avisar(self, empresa: dict, numero: str, texto: str, ahora: datetime):
+        """Mensaje del negocio a un paciente (confirmación o rechazo de un pago). Devuelve el Envio."""
+        envio = self._whatsapp(empresa).enviar_texto(numero, texto)
+        if envio:
+            self._almacen.agregar(empresa["id"], numero, "assistant", texto, ahora)
+        return envio
+
+    def vencer_reservas(self, empresa: dict, ahora: datetime) -> int:
+        """Libera las reservas sin comprobante a tiempo y le avisa a cada paciente."""
+        liberadas = reservas.vencer(self._almacen, empresa, ahora)
+        if liberadas:
+            whatsapp = self._whatsapp(empresa)
+            for c in liberadas:
+                r = reservas.resumen(c, self._zona)
+                whatsapp.enviar_texto(c["paciente_telefono"], AVISO_VENCIDA.format(dia=r["dia"], hora=r["hora"], sede=r["sede"]))
+        return len(liberadas)
 
     def registrar_falla(self, empresa: dict, falla: FallaDeEntrega, ahora: datetime) -> str:
         """Meta avisó que no pudo entregar un mensaje del bot: queda en la Actividad con el motivo.

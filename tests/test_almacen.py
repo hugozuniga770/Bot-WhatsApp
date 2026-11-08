@@ -308,3 +308,18 @@ def test_RF25_bloqueos_por_rango_de_fechas(almacen_contrato, dos, ahora):
     assert almacen_contrato.bloqueos(a["id"], hoy + timedelta(days=3), hoy + timedelta(days=9)) == []
     assert almacen_contrato.borrar_bloqueo(b["id"], feriado["id"]) is False
     assert almacen_contrato.borrar_bloqueo(a["id"], feriado["id"]) is True
+
+
+def test_RF28_archivos_y_campos_de_reserva_se_guardan(almacen_contrato, dos, ahora):
+    a, b = dos
+    # Un comprobante guardado solo lo ve su empresa
+    aid = almacen_contrato.guardar_archivo(a["id"], "comprobante", "image/png", b"\x89PNG", ahora)
+    assert almacen_contrato.archivo(a["id"], aid)["datos"] == b"\x89PNG" and almacen_contrato.archivo(b["id"], aid) is None
+    # Una reserva por WhatsApp guarda el adelanto pedido, el plazo y el comprobante
+    p = almacen_contrato.crear_paciente(a["id"], "Ana", CLIENTE, ahora)
+    c = almacen_contrato.crear_cita(a["id"], {"paciente_id": p["id"], "inicio": ahora + timedelta(days=2), "fin": ahora + timedelta(days=2, minutes=30),
+                                              "estado": "pendiente_pago", "origen": "bot", "adelanto_pedido": 125,
+                                              "reserva_vence": ahora + timedelta(hours=2)}, ahora)
+    assert (c["adelanto_pedido"], c["reserva_vence"], c["comprobante_id"]) == (125.0, ahora + timedelta(hours=2), None)
+    c = almacen_contrato.actualizar_cita(a["id"], c["id"], {"estado": "por_revisar", "comprobante_id": aid, "reserva_vence": None}, ahora)
+    assert (c["estado"], c["comprobante_id"], c["reserva_vence"]) == ("por_revisar", aid, None)

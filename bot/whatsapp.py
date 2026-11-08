@@ -63,6 +63,38 @@ class WhatsApp:
         log.error("Meta rechazo el envio a %s: %s %s", ocultar_numero(numero), codigo, mensaje)
         return Envio(False, codigo, mensaje)
 
+    def descargar_media(self, media_id: str, maximo: int = 5 * 1024 * 1024):
+        """(ok, (bytes, mime)) o (False, (codigo, mensaje)). Meta da primero la URL y luego el archivo."""
+        try:
+            r = self._sesion.get(self._url(media_id), headers=self._headers, timeout=self._timeout)
+            if not r.ok:
+                return False, error_de_meta(r)
+            info = r.json()
+            if int(info.get("file_size") or 0) > maximo:
+                return False, (None, "El archivo pesa más de 5 MB.")
+            archivo = self._sesion.get(info["url"], headers=self._headers, timeout=self._timeout)
+            if not archivo.ok:
+                return False, (archivo.status_code, "No se pudo bajar el archivo.")
+            if len(archivo.content) > maximo:
+                return False, (None, "El archivo pesa más de 5 MB.")
+            return True, (archivo.content, info.get("mime_type") or archivo.headers.get("Content-Type", "application/octet-stream"))
+        except (requests.RequestException, KeyError, ValueError) as e:
+            log.exception("No se pudo bajar el archivo %s de Meta", media_id)
+            return False, (None, e.__class__.__name__)
+
+    def enviar_imagen(self, numero: str, enlace: str, texto: str = "") -> Envio:
+        """Manda una imagen por su dirección pública (por ejemplo, el QR de cobro)."""
+        cuerpo = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": numero,
+                  "type": "image", "image": {"link": enlace, **({"caption": texto[:1024]} if texto else {})}}
+        try:
+            r = self._sesion.post(self._url(f"{self._phone_id}/messages"), json=cuerpo, headers=self._headers, timeout=self._timeout)
+        except requests.RequestException as e:
+            return Envio(False, None, f"Sin conexión con Meta: {e.__class__.__name__}")
+        if r.ok:
+            return Envio(True)
+        codigo, mensaje = error_de_meta(r)
+        return Envio(False, codigo, mensaje)
+
     def info_numero(self):
         """(ok, datos o (codigo, mensaje)). Sirve para validar el token y el Phone number ID."""
         r = self._sesion.get(self._url(self._phone_id), headers=self._headers, timeout=self._timeout,

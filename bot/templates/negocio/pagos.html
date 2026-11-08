@@ -1,0 +1,26 @@
+{% extends "negocio/_base.html" %}
+{% block titulo %}Pagos · {{ g.empresa.nombre }}{% endblock %}
+{% block contenido %}
+<div class="cabecera-agenda"><h1>Pagos</h1>{% if g.usuario.rol == 'dueno' %}<a class="boton" href="{{ url_for('negocio.cobros') }}">Configurar cobros</a>{% endif %}</div>
+<section class="seccion" aria-labelledby="t-revisar">
+  <h2 id="t-revisar">Comprobantes por revisar</h2>
+  {% if por_revisar %}
+  <ul class="eventos">
+    {% for c in por_revisar %}
+    <li><a href="{{ url_for('negocio.cita', cid=c.id) }}">{{ c.paciente_nombre }}: {{ c.adelanto_pedido | bs }}, {{ c.inicio | dia_local | fecha }} a las {{ c.inicio | hora }} en {{ c.sede }}</a><span class="etiqueta cita-por_revisar">Revisar</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="suave">No hay comprobantes por revisar.</p>{% endif %}
+</section>
+<section class="seccion" aria-labelledby="t-esperando">
+  <h2 id="t-esperando">Reservas esperando el comprobante</h2>
+  <p class="suave chico">Si no llega a tiempo, el horario se libera solo y el bot le avisa al paciente.</p>
+  {% if esperando %}
+  <ul class="eventos">
+    {% for c in esperando %}
+    <li><a href="{{ url_for('negocio.cita', cid=c.id) }}">{{ c.paciente_nombre }}: {{ c.adelanto_pedido | bs }}, {{ c.inicio | dia_local | fecha }} a las {{ c.inicio | hora }} en {{ c.sede }}</a><time>hasta las {{ c.reserva_vence | hora if c.reserva_vence else '—' }}</time></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="suave">Ninguna.</p>{% endif %}
+</section>
+{% endblock %}

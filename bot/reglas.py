@@ -45,6 +45,7 @@ class MensajeEntrante:
     numero: str
     tipo: str
     texto: str = ""
+    media_id: str = ""  # foto o documento (por ejemplo, un comprobante de pago)
 
 
 def extraer_mensajes(payload) -> list[MensajeEntrante]:
@@ -65,10 +66,13 @@ def extraer_mensajes(payload) -> list[MensajeEntrante]:
                 if not m.get("id") or not m.get("from"):
                     continue
                 tipo = m.get("type", "")
-                texto = ""
+                texto, media_id = "", ""
                 if tipo == "text":
                     texto = ((m.get("text") or {}).get("body") or "").strip()
-                mensajes.append(MensajeEntrante(m["id"], m["from"], tipo, texto))
+                elif tipo in ("image", "document"):
+                    media = m.get(tipo) or {}
+                    media_id, texto = str(media.get("id") or ""), (media.get("caption") or "").strip()
+                mensajes.append(MensajeEntrante(m["id"], m["from"], tipo, texto, media_id))
     return mensajes
 
 

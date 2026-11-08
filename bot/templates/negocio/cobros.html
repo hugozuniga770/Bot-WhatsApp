@@ -1,0 +1,65 @@
+{% extends "negocio/_base.html" %}
+{% block titulo %}Cobros · {{ g.empresa.nombre }}{% endblock %}
+{% block contenido %}
+<h1>Cobros y adelantos</h1>
+<p class="suave">Con esto el bot agenda valoraciones por WhatsApp: ofrece turnos libres, aparta el horario y pide el adelanto. Tú o tu asistente aprueban el pago en la pestaña Pagos.</p>
+{% if not tiene_horario %}<div class="aviso error">Primero carga tu horario en la pestaña Horario: sin él, el bot no tiene turnos para ofrecer.</div>{% endif %}
+{% if errores %}<div class="aviso error" role="alert">Revisa los datos marcados en rojo.</div>{% endif %}
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <div class="campo {% if errores.activo %}con-error{% endif %}">
+    <label class="opcion-sola"><input type="checkbox" name="activo" value="1" {% if cobro.activo %}checked{% endif %}> El bot agenda y cobra adelantos</label>
+    {% if errores.activo %}<p class="error-campo">{{ errores.activo }}</p>{% endif %}
+  </div>
+
+  <h2 class="seccion">Precio de la valoración por sede</h2>
+  <p class="suave chico">El adelanto de un paciente nuevo es un porcentaje de esto. Deja vacía una sede para que el bot no agende ahí.</p>
+  {% for sede in sedes %}
+  <div class="campo {% if errores['valoracion_%d' % loop.index0] %}con-error{% endif %}">
+    <label for="valoracion_{{ loop.index0 }}">{{ sede }} (Bs)</label>
+    <input id="valoracion_{{ loop.index0 }}" name="valoracion_{{ loop.index0 }}" type="number" min="0" step="0.5" inputmode="decimal" value="{{ '%g' % cobro.valoracion[sede] if sede in cobro.valoracion else '' }}">
+    {% if errores['valoracion_%d' % loop.index0] %}<p class="error-campo">{{ errores['valoracion_%d' % loop.index0] }}</p>{% endif %}
+  </div>
+  <div class="campo">
+    <label for="ubicacion_{{ loop.index0 }}">Ubicación de {{ sede }}<span class="ayuda">Dirección o enlace de Google Maps. Va en el mensaje de confirmación.</span></label>
+    <input id="ubicacion_{{ loop.index0 }}" name="ubicacion_{{ loop.index0 }}" type="text" value="{{ cobro.ubicaciones.get(sede, '') }}">
+  </div>
+  {% else %}
+  <p class="suave">Todavía no hay sedes: se toman de tu horario.</p>
+  {% endfor %}
+
+  <h2 class="seccion">Reglas</h2>
+  <div class="campo {% if errores.porcentaje %}con-error{% endif %}">
+    <label for="porcentaje">Porcentaje de adelanto (%)</label>
+    <input id="porcentaje" name="porcentaje" type="number" min="1" max="100" step="1" value="{{ '%g' % cobro.porcentaje }}" required>
+    {% if errores.porcentaje %}<p class="error-campo">{{ errores.porcentaje }}</p>{% endif %}
+  </div>
+  <div class="campo {% if errores.plazo_horas %}con-error{% endif %}">
+    <label for="plazo_horas">Horas para mandar el comprobante<span class="ayuda">Pasado ese tiempo, el horario se libera solo.</span></label>
+    <input id="plazo_horas" name="plazo_horas" type="number" min="0.5" max="48" step="0.5" value="{{ '%g' % cobro.plazo_horas }}" required>
+    {% if errores.plazo_horas %}<p class="error-campo">{{ errores.plazo_horas }}</p>{% endif %}
+  </div>
+
+  <h2 class="seccion">Cómo te pagan</h2>
+  <div class="campo">
+    <label for="instrucciones">Datos para pagar<span class="ayuda">Banco, número de cuenta, titular. El bot se los pasa al paciente.</span></label>
+    <textarea id="instrucciones" name="instrucciones">{{ cobro.instrucciones }}</textarea>
+  </div>
+  <div class="campo {% if errores.qr %}con-error{% endif %}">
+    <label for="qr">Imagen del QR de cobro<span class="ayuda">PNG o JPG, hasta 2 MB. El bot se la manda al paciente al reservar.</span></label>
+    {% if cobro.qr_id %}<p><img class="comprobante qr" src="{{ url_for('negocio.archivo', aid=cobro.qr_id) }}" alt="QR de cobro actual"></p>
+    <label class="opcion-sola"><input type="checkbox" name="quitar_qr" value="1"> Quitar el QR</label>{% endif %}
+    <input id="qr" name="qr" type="file" accept="image/png,image/jpeg,image/webp">
+    {% if errores.qr %}<p class="error-campo">{{ errores.qr }}</p>{% endif %}
+  </div>
+
+  <h2 class="seccion">Avisos</h2>
+  <div class="campo {% if errores.aviso_numero %}con-error{% endif %}">
+    <label for="aviso_numero">WhatsApp de quien revisa los pagos<span class="ayuda">Con código de país, por ejemplo 591 70000000. Ahí llega el aviso de cada comprobante.</span></label>
+    <input id="aviso_numero" name="aviso_numero" type="tel" value="{{ cobro.aviso_numero }}">
+    {% if errores.aviso_numero %}<p class="error-campo">{{ errores.aviso_numero }}</p>{% endif %}
+    <p class="suave chico">WhatsApp solo deja mandarle el aviso si esa persona le escribió al número del negocio en las últimas 24 horas. Si no, revisa la pestaña Pagos.</p>
+  </div>
+  <div class="acciones"><button class="boton principal" type="submit">Guardar cobros</button></div>
+</form>
+{% endblock %}

@@ -14,8 +14,9 @@
   {% for endpoint, texto, activos in [('negocio.semana', 'Agenda', ('negocio.semana', 'negocio.dia', 'negocio.nueva_cita', 'negocio.cita')),
                                       ('negocio.mes', 'Mes', ('negocio.mes',)),
                                       ('negocio.pacientes', 'Pacientes', ('negocio.pacientes', 'negocio.paciente')),
-                                      ('negocio.horario', 'Horario', ('negocio.horario',))] %}
-  <a href="{{ url_for(endpoint) }}" {% if request.endpoint in activos %}aria-current="page"{% endif %}>{{ texto }}</a>
+                                      ('negocio.horario', 'Horario', ('negocio.horario',)),
+                                      ('negocio.pagos', 'Pagos', ('negocio.pagos', 'negocio.cobros'))] %}
+  <a href="{{ url_for(endpoint) }}" {% if request.endpoint in activos %}aria-current="page"{% endif %}>{{ texto }}{% if endpoint == 'negocio.pagos' and pagos_por_revisar %} <span class="contador" aria-label="{{ pagos_por_revisar }} por revisar">{{ pagos_por_revisar }}</span>{% endif %}</a>
   {% endfor %}
 </nav>
 {% endif %}

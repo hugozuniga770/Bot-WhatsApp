@@ -214,3 +214,23 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 - **El JavaScript del formulario** (pasos, copiar, probar, estado del webhook): solo se probó en el recorrido de la sección 3, sin tests automáticos. Sin JavaScript, el formulario igual funciona.
 - **Dos mensajes del mismo cliente en el mismo instante:** hay un candado por chat, pero no hay test de concurrencia.
 - **El aviso al dueño fuera de la ventana de 24 h:** falla por regla de Meta (README, sección 9). Desde la v2.5, el motivo llega a la Actividad; se probó con el JSON que documenta Meta, no con un aviso real.
+
+## Etapa 2: reservas por WhatsApp (v3.1, 08/11/2026)
+
+| Corrida | Resultado |
+|---|---|
+| Entorno de armado, sin base | **122 passed, 17 skipped** |
+| Entorno de armado, con PostgreSQL 16 real | **139 passed**, 0 saltadas |
+| Base de la v3.0 actualizada a la v3.1 | Las citas existentes se conservan; las columnas nuevas y la tabla `archivos` se crean solas |
+| Navegador de celular (390 px) con gunicorn + PostgreSQL | Pagos, cita con comprobante y Cobros sin errores de consola; hora de Bolivia correcta; las 5 pestañas entran en el celular |
+| GitHub Actions | **Pendiente** |
+
+| Requisito | Tests (`test_reservas.py`, salvo indicación) |
+|---|---|
+| BOT-RF-26 | `test_RF26_ofrece_solo_turnos_reales_del_horario_y_libres`, `test_RF26_sin_activar_o_sin_horario_el_bot_no_agenda` |
+| BOT-RF-27 | `test_RF27_un_paciente_nuevo_reserva_y_debe_el_50_de_la_valoracion_de_su_sede`, `test_RF27_los_casos_que_no_se_agendan_solos_piden_derivar`, `test_RF27_en_el_chat_claude_usa_las_herramientas_y_el_bot_manda_el_qr`, `test_RF27_el_asistente_ejecuta_las_herramientas_que_pide_claude_y_suma_los_tokens` |
+| BOT-RF-28 | `test_RF28_la_foto_del_comprobante_pasa_la_cita_a_por_revisar_y_avisa_a_la_asistente`, `test_RF28_una_foto_sin_reserva_recibe_la_respuesta_de_siempre`, `test_RF28_meta_avisa_el_id_de_la_foto_y_su_texto`, `test_RF28_archivos_y_campos_de_reserva_se_guardan` [memoria, postgres] (`test_almacen.py`) |
+| BOT-RF-29 | `test_RF29_reprograma_si_faltan_mas_de_24_horas_y_no_si_faltan_menos`, `test_RF29_sin_comprobante_a_tiempo_el_horario_se_libera_y_se_avisa`, `test_RF29_cancelar_avisa_que_el_adelanto_no_se_devuelve` |
+| BOT-RF-30 | `test_RF30_aprobar_confirma_la_cita_anota_el_adelanto_y_le_avisa_al_paciente`, `test_RF30_rechazar_vuelve_a_pedir_el_comprobante_con_un_plazo_nuevo`, `test_RF30_la_pestana_pagos_cuenta_los_comprobantes_y_otra_empresa_no_ve_los_archivos`, `test_RF30_la_duena_configura_los_cobros_y_la_asistente_no`, `test_RF30_el_qr_de_cobro_es_publico_y_solo_si_es_un_qr` |
+
+**Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.

@@ -1,7 +1,7 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.0
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.1
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
 - Estado al 08/11/2026: v2.4 en línea en Render con el CI en verde (82 pruebas, run #6). **Prueba de punta a punta superada:** el bot de Sentirse Única respondió por WhatsApp en el número de prueba. La v2.5 anota en la Actividad los mensajes que Meta no pudo entregar y deja cambiar el token de verificación. La **v3.0** suma la **agenda de cada negocio** (etapa 1): accesos propios para la dueña y su asistente, agenda de semana, día y mes con turnos libres, citas, pacientes, horario y días bloqueados. 120 pruebas en el entorno de armado. **Pendiente:** el CI de la v3.0; la etapa 2 (el bot agenda y cobra el adelanto, D-27 y D-28); el número real con coexistencia (D-05).
 
@@ -42,6 +42,11 @@ Todo se maneja desde un **panel** pensado para el celular:
 | BOT-RF-23 | Citas cargadas a mano: no deja dos citas en el mismo horario; se reprograman, se cancelan (liberan el horario) o se marcan atendidas con lo cobrado y cómo se pagó |
 | BOT-RF-24 | Lista de pacientes con búsqueda, sus citas y cuánto pagó; un número no se repite dentro del negocio |
 | BOT-RF-25 | Horario semanal por sede, duración del turno y días bloqueados (feriados, viajes) |
+| BOT-RF-26 | Por WhatsApp, el bot ofrece solo turnos reales y libres de la agenda (desde 2 h después y hasta 14 días), por sede |
+| BOT-RF-27 | El bot reserva la valoración de un paciente nuevo como "pendiente de pago" y le pide el adelanto (50 % del precio de su sede), con los datos de pago y el QR. Los pacientes que ya se atendieron se derivan a una persona |
+| BOT-RF-28 | La foto o PDF del comprobante pasa la cita a "pago por revisar", queda guardada en el panel y se avisa a quien revisa los pagos |
+| BOT-RF-29 | Si el comprobante no llega a tiempo, el horario se libera solo y el bot avisa. Reprogramar sin perder el adelanto solo hasta 24 h antes; cancelar no devuelve el adelanto |
+| BOT-RF-30 | En el panel del negocio: pestaña Pagos, aprobar (confirma la cita y el bot avisa al paciente con la ubicación) o rechazar (pide otro comprobante), y la dueña configura los cobros |
 
 ## 2. Cómo funciona
 
@@ -127,6 +132,7 @@ bot/
   app.py            armado de la app y webhook de cada empresa (/webhook/<slug>)
   panel.py          panel del administrador (/panel)
   negocio.py        panel de cada negocio (/negocio): agenda, citas, pacientes y horario
+  reservas.py       reservas por WhatsApp: turnos libres, adelanto, comprobante, vencimiento (v3.1)
   agenda.py         accesos, citas, pacientes y horario del negocio
   alta.py           enlace de alta (/alta/<token>)
   servicios.py      atención de un mensaje de principio a fin

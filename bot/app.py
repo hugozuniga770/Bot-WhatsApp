@@ -112,6 +112,21 @@ def salud():
     return "ok", 200
 
 
+@webhook.get("/pago/<slug>/qr")
+def qr_de_pago(slug):
+    """El QR de cobro del negocio. Es público a propósito: WhatsApp lo baja para mandárselo al paciente."""
+    from flask import Response
+
+    from . import reservas
+    c = ctx()
+    empresa = c.almacen.empresa_por_slug(slug) or abort(404)
+    qr_id = reservas.cobro(empresa)["qr_id"]
+    archivo = c.almacen.archivo(empresa["id"], int(qr_id)) if qr_id else None
+    if not archivo or archivo["tipo"] != "qr":
+        abort(404)
+    return Response(archivo["datos"], mimetype=archivo["mime"], headers={"Cache-Control": "public, max-age=300"})
+
+
 @webhook.get("/privacidad/<slug>")
 def privacidad(slug):
     """Política de privacidad de una empresa (Meta la pide para publicar la app)."""
@@ -141,8 +156,29 @@ def raiz():
 
 
 # ------------------------------------------------------------------ armado
-def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecutar=None, reloj=None):
+def _vigilar_reservas(contexto, cada_segundos: int = 300):
+    """Cada 5 minutos libera las reservas sin comprobante a tiempo (v3.1).
+
+    Corre en un hilo del proceso. Si Render duerme el servicio, se retoma al despertar,
+    y además cada mensaje que llega revisa las de su empresa.
+    """
+    import time
+
+    from . import reservas
+
+    while True:
+        time.sleep(cada_segundos)
+        try:
+            for empresa in contexto.almacen.empresas():
+                if empresa.get("estado") in ("activa", "revision") and reservas.activo(empresa):
+                    contexto.servicios.vencer_reservas(empresa, contexto.ahora())
+        except Exception:
+            log.exception("Error al liberar reservas vencidas")
+
+
+def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecutar=None, reloj=None, tareas=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    config_venia_del_entorno = config is None
     if config is None:
         load_dotenv()
         config = cargar()
@@ -167,7 +203,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
             return Asistente(s["anthropic_key"], empresa.get("modelo") or reglas.MODELO_POR_DEFECTO,
                              componer(config.plantilla_manual, empresa))
 
-        servicios = Servicios(almacen, fabrica_whatsapp, fabrica_asistente, config.zona_horaria)
+        servicios = Servicios(almacen, fabrica_whatsapp, fabrica_asistente, config.zona_horaria, config.url_publica)
 
     app = Flask(__name__)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -220,5 +256,8 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
         if request.path.startswith(("/panel", "/alta", "/negocio")):
             respuesta.headers["Cache-Control"] = "no-store"
         return respuesta
+
+    if tareas if tareas is not None else (config_venia_del_entorno):
+        threading.Thread(target=_vigilar_reservas, args=(app.extensions["bot"],), daemon=True).start()
 
     return app
