@@ -1,7 +1,7 @@
 # Arquitectura
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 08/11/2026 · Versión: v2.5
+- Fecha: 08/11/2026 · Versión: v3.0
 - Relacionados: [README](../README.md) · [Despliegue](despliegue.md) · [Decisiones](decisiones.md) · [Pruebas](pruebas.md)
 
 ## 1. Componentes
@@ -95,6 +95,23 @@ Las tablas se crean solas al arrancar. Si la base tiene tablas de la v1.x, el se
 | `actividad` | Empresa y tipo | Última vez de `webhook`, `mensaje` y `respuesta` |
 | `eventos` | Algo que pasó | Errores, derivaciones, verificaciones, cambios de estado; se borran a los 60 días |
 
+## 4b. Agenda del negocio (v3.0)
+
+Cuatro tablas, todas con `empresa_id` y borrado en cascada con la empresa:
+
+| Tabla | Qué guarda |
+|---|---|
+| `usuarios` | Accesos a `/negocio`: usuario único, nombre, rol (`dueno`, `asistente`), hash de la contraseña, si debe cambiarla, si está activo y el último ingreso |
+| `pacientes` | Nombre y teléfono (normalizado como lo usa Meta) |
+| `citas` | Paciente, inicio y fin (con zona horaria), sede, servicio, estado, adelanto, lo cobrado en la cita y cómo se pagó |
+| `bloqueos` | Rangos de días sin atención |
+
+El horario semanal va en `empresas.datos.agenda` (`duracion` y `turnos` con día, sede, desde y hasta).
+
+- **Estados de una cita:** pendiente de pago y pago por revisar (para la etapa 2), confirmada, atendida, no asistió y cancelada. Todas ocupan el horario menos la cancelada (`reglas.ESTADOS_QUE_OCUPAN`).
+- **Turnos libres:** `reglas.agenda_del_dia` corta el horario del día en turnos de la duración elegida y descarta los que se superponen con una cita. Es la misma función que usará el bot en la etapa 2 para ofrecer horarios.
+- **Aislamiento:** `negocio.py` toma la empresa del usuario que entró (`g.empresa`) y todos los métodos del almacén de la agenda piden `empresa_id`. Un id de otra empresa responde 404.
+
 ## 5. Seguridad
 
 - **Llaves cifradas (BOT-RF-13):** Fernet, con una clave derivada de `CLAVE_MAESTRA`. En la base y en el panel nunca aparecen completas (`sk-ant-…1234`).
@@ -110,6 +127,7 @@ Las tablas se crean solas al arrancar. Si la base tiene tablas de la v1.x, el se
   - `X-Frame-Options: DENY`;
   - `Referrer-Policy: no-referrer`, para que el token del enlace no se filtre al abrir las guías de Meta o Claude;
   - `Cache-Control: no-store` en el panel y en el alta.
+- **Panel del negocio (BOT-RF-21):** contraseñas con hash scrypt; la temporal se muestra una sola vez (no pasa por la sesión) y hay que cambiarla al entrar; 5 intentos fallidos bloquean la IP 15 minutos; CSRF en cada formulario; la sesión del negocio no da acceso a `/panel`.
 - **Logs:** los números de clientes salen recortados (`...1234`).
 
 ## 6. Variables de entorno

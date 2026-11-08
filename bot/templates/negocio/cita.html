@@ -1,0 +1,96 @@
+{% extends "negocio/_base.html" %}
+{% from "negocio/_campos.html" import fila %}
+{% block titulo %}{{ cita.paciente_nombre if cita else 'Nueva cita' }} · Agenda{% endblock %}
+{% macro campos_horario(v, errores, sedes) -%}
+  {{ fila('fecha', 'Fecha', v.get('fecha'), errores, tipo='date', extra='required') }}
+  {{ fila('hora', 'Hora', v.get('hora'), errores, tipo='time', extra='required step="300"') }}
+  {{ fila('duracion', 'Duración en minutos', v.get('duracion'), errores, tipo='number', ayuda='Si lo dejas vacío, se usa la duración del turno de tu horario.', extra='min="5" max="480" inputmode="numeric"') }}
+  {{ fila('sede', 'Sede', v.get('sede'), errores, extra='list="sedes" autocomplete="off"') }}
+  <datalist id="sedes">{% for s in sedes %}<option value="{{ s }}">{% endfor %}</datalist>
+  {{ fila('servicio', 'Servicio', v.get('servicio'), errores, ayuda='Por ejemplo: valoración, sesión de piso pélvico, bótox.') }}
+  {{ fila('adelanto', 'Adelanto pagado (Bs)', v.get('adelanto'), errores, tipo='number', ayuda='Lo que ya pagó para reservar. Vacío si no pagó nada.', extra='min="0" step="0.5" inputmode="decimal"') }}
+{%- endmacro %}
+{% block contenido %}
+<p><a href="{{ url_for('negocio.dia', d=(cita.inicio | dia_local).isoformat()) if cita else url_for('negocio.semana') }}">Volver a la agenda</a></p>
+
+{% if cita %}
+<div class="cabecera-empresa">
+  <h1>{{ cita.paciente_nombre }}</h1>
+  <span class="etiqueta cita-{{ cita.estado }}">{{ cita.estado | estado_cita }}</span>
+</div>
+<p class="suave">{{ cita.inicio | dia_local | dia_largo | capitalize }}, de {{ cita.inicio | hora }} a {{ cita.fin | hora }}{% if cita.sede %} · {{ cita.sede }}{% endif %}</p>
+<dl class="datos-credito">
+  <div><dt>Servicio</dt><dd>{{ cita.servicio or '—' }}</dd></div>
+  <div><dt>Adelanto</dt><dd>{{ cita.adelanto | bs }}</dd></div>
+  {% if cita.estado == 'atendida' %}
+  <div><dt>Cobrado en la cita</dt><dd>{{ cita.cobrado | bs }}{% if cita.metodo_pago %} ({{ cita.metodo_pago }}){% endif %}</dd></div>
+  <div><dt>Total pagado</dt><dd>{{ ((cita.adelanto or 0) + (cita.cobrado or 0)) | bs }}</dd></div>
+  {% endif %}
+  <div><dt>Teléfono</dt><dd>{% if cita.paciente_telefono %}<a href="https://wa.me/{{ cita.paciente_telefono }}" target="_blank" rel="noopener noreferrer">{{ cita.paciente_telefono | telefono }}</a>{% else %}—{% endif %}</dd></div>
+</dl>
+<div class="acciones"><a class="boton" href="{{ url_for('negocio.paciente', pid=cita.paciente_id) }}">Ver paciente</a></div>
+
+<section class="seccion" aria-labelledby="t-termino">
+  <h2 id="t-termino">¿Cómo terminó?</h2>
+  {% if cita.estado != 'atendida' %}
+  <details {% if cita.inicio <= ahora and cita.estado == 'confirmada' %}open{% endif %}>
+    <summary>Marcar como atendida</summary>
+    <form method="post" action="{{ url_for('negocio.estado_cita', cid=cita.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="estado" value="atendida">
+      <label for="cobrado">Cuánto se cobró en la cita (Bs)<span class="ayuda">Además del adelanto de {{ cita.adelanto | bs }}. Escribe 0 si no se cobró nada.</span></label>
+      <input id="cobrado" name="cobrado" type="number" min="0" step="0.5" inputmode="decimal" required>
+      <label>Cómo pagó</label>
+      <div class="opciones">
+        {% for m, texto in [('efectivo', 'Efectivo'), ('qr', 'QR'), ('transferencia', 'Transferencia'), ('otro', 'Otro')] %}
+        <label><input type="radio" name="metodo_pago" value="{{ m }}" {% if loop.first %}checked{% endif %}> {{ texto }}</label>
+        {% endfor %}
+      </div>
+      <div class="acciones"><button class="boton principal" type="submit">Guardar como atendida</button></div>
+    </form>
+  </details>
+  {% endif %}
+  <div class="acciones">
+    {% for estado, texto, pregunta in [('no_asistio', 'No asistió', '¿Marcar que no asistió? El adelanto no se devuelve.'),
+                                       ('cancelada', 'Cancelar la cita', '¿Cancelar la cita? El horario queda libre y el adelanto no se devuelve. Si avisó con 24 h, mejor reprográmala abajo.'),
+                                       ('confirmada', 'Volver a confirmada', '¿Volver a dejarla confirmada?')] if estado != cita.estado %}
+    <form class="en-linea" method="post" action="{{ url_for('negocio.estado_cita', cid=cita.id) }}" data-confirmar="{{ pregunta }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="estado" value="{{ estado }}">
+      <button class="boton" type="submit">{{ texto }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="seccion" aria-labelledby="t-reprogramar">
+  <h2 id="t-reprogramar">Reprogramar o corregir</h2>
+  <p class="suave chico">El paciente puede reprogramar sin perder el adelanto si avisa hasta 24 horas antes.</p>
+  {% set v = valores or {'fecha': (cita.inicio | dia_local).isoformat(), 'hora': cita.inicio | hora,
+                         'duracion': ((cita.fin - cita.inicio).total_seconds() // 60) | int, 'sede': cita.sede,
+                         'servicio': cita.servicio, 'adelanto': '%g' % cita.adelanto if cita.adelanto else ''} %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    {{ campos_horario(v, errores, sedes) }}
+    <div class="acciones"><button class="boton principal" type="submit">Guardar cambios</button></div>
+  </form>
+</section>
+
+{% else %}
+<h1>Nueva cita</h1>
+{% set v = valores or {} %}
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  {% if paciente %}
+    <input type="hidden" name="paciente_id" value="{{ paciente.id }}">
+    <p class="caja">Paciente: <strong>{{ paciente.nombre }}</strong>{% if paciente.telefono %} · {{ paciente.telefono | telefono }}{% endif %}</p>
+  {% else %}
+    {{ fila('nombre', 'Nombre del paciente', v.get('nombre'), errores, extra='required autocomplete="off"') }}
+    {{ fila('telefono', 'WhatsApp del paciente', v.get('telefono'), errores, tipo='tel', ayuda='Con código de país, por ejemplo 591 70000000. Si el número ya está en tus pacientes, se usa ese paciente.', extra='autocomplete="off"') }}
+  {% endif %}
+  {% if errores.get('paciente') %}<p class="error-campo">{{ errores['paciente'] }}</p>{% endif %}
+  {{ campos_horario(v, errores, sedes) }}
+  <div class="acciones"><button class="boton principal" type="submit">Guardar la cita</button></div>
+</form>
+{% endif %}
+{% endblock %}

@@ -151,6 +151,58 @@
   </div>
 </section>
 
+<section class="seccion" id="accesos" aria-labelledby="t-accesos">
+  <h2 id="t-accesos">Agenda del negocio</h2>
+  <p class="suave chico">La dueña y su asistente entran en <strong>{{ agenda_url }}</strong> con su usuario y contraseña. Ven solo la agenda, los pacientes y el horario de {{ e.nombre }}: nada de llaves, créditos ni otras empresas.</p>
+  {% if acceso_nuevo %}
+  <div class="caja destacada" role="status">
+    <h3>Acceso de {{ acceso_nuevo.usuario.nombre }}</h3>
+    <p>Pásale estos datos. La contraseña es temporal: la primera vez que entre, elige una suya. <strong>No se vuelve a mostrar.</strong></p>
+    {% set texto_acceso = 'Hola ' ~ acceso_nuevo.usuario.nombre.split()[0] ~ ', esta es tu entrada a la agenda de ' ~ e.nombre ~ ':\n' ~ agenda_url ~ '\nUsuario: ' ~ acceso_nuevo.usuario.usuario ~ '\nContraseña temporal: ' ~ acceso_nuevo.clave ~ '\nAl entrar te va a pedir que elijas tu propia contraseña.' %}
+    <textarea id="acceso-texto" readonly rows="5">{{ texto_acceso | replace('\n', '
+') }}</textarea>
+    <div class="acciones">
+      <button class="boton principal" type="button" data-copiar="#acceso-texto">Copiar</button>
+      <a class="boton" href="https://wa.me/?text={{ (texto_acceso | replace('\n', '
+')) | urlencode }}" target="_blank" rel="noopener noreferrer">Enviar por WhatsApp</a>
+    </div>
+  </div>
+  {% endif %}
+  {% if usuarios %}
+  <ul class="lista-simple">
+    {% for u in usuarios %}
+    <li>
+      <span><strong>{{ u.nombre }}</strong><br><span class="suave chico">{{ u.usuario }} · {{ roles[u.rol] }} ·
+        {% if not u.activo %}desactivado{% elif u.debe_cambiar %}todavía no eligió su contraseña{% else %}entró {{ hace(u.ultimo_ingreso) }}{% endif %}</span></span>
+      <span class="acciones">
+        <form class="en-linea" method="post" action="{{ url_for('panel.nueva_clave_usuario', eid=e.id, uid=u.id) }}" data-confirmar="¿Darle a {{ u.nombre }} una contraseña temporal nueva? La anterior deja de servir.">
+          <input type="hidden" name="csrf" value="{{ csrf() }}"><button class="boton" type="submit">Contraseña nueva</button>
+        </form>
+        <form class="en-linea" method="post" action="{{ url_for('panel.activar_usuario', eid=e.id, uid=u.id) }}" {% if u.activo %}data-confirmar="¿Desactivar el acceso de {{ u.nombre }}? No podrá entrar hasta que lo actives."{% endif %}>
+          <input type="hidden" name="csrf" value="{{ csrf() }}"><button class="boton" type="submit">{{ 'Desactivar' if u.activo else 'Activar' }}</button>
+        </form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <details>
+    <summary>Crear un acceso</summary>
+    <form method="post" action="{{ url_for('panel.nuevo_usuario', eid=e.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <label for="u-nombre">Nombre de la persona</label>
+      <input id="u-nombre" name="nombre" type="text" required placeholder="Ej.: Giovanna Daza">
+      <label for="u-usuario">Usuario<span class="ayuda">Con lo que va a entrar. Sin espacios ni tildes, por ejemplo giovanna.</span></label>
+      <input id="u-usuario" name="usuario" type="text" required autocapitalize="none" spellcheck="false">
+      <label>Rol</label>
+      <div class="opciones">
+        {% for valor, texto in roles.items() %}<label><input type="radio" name="rol" value="{{ valor }}" {% if loop.first %}checked{% endif %}> {{ texto }}</label>{% endfor %}
+      </div>
+      <div class="acciones"><button class="boton principal" type="submit">Crear y ver la contraseña</button></div>
+    </form>
+  </details>
+</section>
+
 <section class="seccion" aria-labelledby="t-actividad">
   <h2 id="t-actividad">Actividad</h2>
   {% if eventos %}

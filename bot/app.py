@@ -188,11 +188,13 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
 
     from .panel import panel
     from .alta import alta
+    from .negocio import negocio
     from .formato import registrar_filtros
 
     app.register_blueprint(webhook)
     app.register_blueprint(panel)
     app.register_blueprint(alta)
+    app.register_blueprint(negocio)
     registrar_filtros(app)
 
     @app.errorhandler(BaseDeDatosNoDisponible)
@@ -215,7 +217,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
             "font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'; "
             "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
         )
-        if request.path.startswith(("/panel", "/alta")):
+        if request.path.startswith(("/panel", "/alta", "/negocio")):
             respuesta.headers["Cache-Control"] = "no-store"
         return respuesta
 

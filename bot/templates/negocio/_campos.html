@@ -1,0 +1,7 @@
+{% macro fila(nombre, titulo, valor='', errores={}, tipo='text', ayuda='', extra='') -%}
+<div class="campo {% if errores.get(nombre) %}con-error{% endif %}">
+  <label for="c-{{ nombre }}">{{ titulo }}{% if ayuda %}<span class="ayuda">{{ ayuda }}</span>{% endif %}</label>
+  <input id="c-{{ nombre }}" name="{{ nombre }}" type="{{ tipo }}" value="{{ valor if valor is not none else '' }}" {{ extra }}>
+  {% if errores.get(nombre) %}<p class="error-campo">{{ errores[nombre] }}</p>{% endif %}
+</div>
+{%- endmacro %}

@@ -1,0 +1,50 @@
+{% extends "negocio/_base.html" %}
+{% block titulo %}Agenda · {{ g.empresa.nombre }}{% endblock %}
+{% block contenido %}
+<div class="cabecera-agenda">
+  <h1>{% if vista == 'semana' %}Semana del {{ dias[0].dia | fecha }}{% else %}{{ dias[0].dia | dia_largo | capitalize }}{% endif %}</h1>
+  <div class="navegar">
+    <a class="boton" href="{{ url_for('negocio.' ~ vista, d=anterior.isoformat()) }}" aria-label="{{ 'Semana' if vista == 'semana' else 'Día' }} anterior">‹</a>
+    <a class="boton" href="{{ url_for('negocio.' ~ vista) }}">Hoy</a>
+    <a class="boton" href="{{ url_for('negocio.' ~ vista, d=siguiente.isoformat()) }}" aria-label="{{ 'Semana' if vista == 'semana' else 'Día' }} siguiente">›</a>
+  </div>
+</div>
+<div class="acciones">
+  <a class="boton principal" href="{{ url_for('negocio.nueva_cita', fecha=(dias[0].dia if vista == 'dia' else hoy).isoformat()) }}">Nueva cita</a>
+  {% if vista == 'dia' %}<a class="boton" href="{{ url_for('negocio.semana', d=dias[0].dia.isoformat()) }}">Ver la semana</a>{% endif %}
+</div>
+{% if not (g.empresa.agenda or {}).get('turnos') %}
+<p class="aviso">Todavía no está cargado el horario. Sin él, la agenda no puede mostrar los turnos libres. <a href="{{ url_for('negocio.horario') }}">Cargar el horario</a></p>
+{% endif %}
+
+{% for d in dias %}
+<section class="dia-agenda {% if d.dia == hoy %}hoy{% endif %}">
+  <h2>{% if vista == 'semana' %}<a href="{{ url_for('negocio.dia', d=d.dia.isoformat()) }}">{{ d.dia | dia_largo | capitalize }}</a>{% else %}Citas y turnos{% endif %}
+    {% if d.dia == hoy and vista == 'semana' %}<span class="etiqueta">Hoy</span>{% endif %}</h2>
+  {% if d.bloqueo %}<p class="bloqueado">No atiende{% if d.bloqueo.motivo %}: {{ d.bloqueo.motivo }}{% endif %}</p>{% endif %}
+  {% set mostrar = d['items'] if vista == 'dia' else d['items'] | selectattr('tipo', 'equalto', 'cita') | list %}
+  {% if mostrar %}
+  <ul class="agenda">
+    {% for it in mostrar %}
+      {% if it.tipo == 'cita' %}{% set c = it.cita %}
+      <li class="cita {{ c.estado }}"><a href="{{ url_for('negocio.cita', cid=c.id) }}">
+        <time datetime="{{ c.inicio.isoformat() }}">{{ c.inicio | hora }}</time>
+        <span class="quien"><strong>{{ c.paciente_nombre }}</strong><span class="suave chico">{{ c.servicio or 'Sin detalle' }}{% if c.sede %} · {{ c.sede }}{% endif %}</span></span>
+        <span class="estado-cita">{{ c.estado | estado_cita }}</span>
+      </a></li>
+      {% else %}{% set t = it.turno %}
+      <li class="libre"><a href="{{ url_for('negocio.nueva_cita', fecha=d.dia.isoformat(), hora=t.inicio | hora, sede=t.sede) }}">
+        <time datetime="{{ t.inicio.isoformat() }}">{{ t.inicio | hora }}</time>
+        <span class="quien">Libre{% if t.sede %} · {{ t.sede }}{% endif %}</span>
+        <span class="estado-cita">+ Agendar</span>
+      </a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+  {% elif not d.bloqueo %}<p class="suave chico">{{ 'Sin citas.' if vista == 'semana' else 'Sin citas ni turnos libres este día.' }}</p>{% endif %}
+  {% if vista == 'semana' and d.libres %}
+  <p class="chico"><a href="{{ url_for('negocio.dia', d=d.dia.isoformat()) }}">{{ d.libres }} turno{{ '' if d.libres == 1 else 's' }} libre{{ '' if d.libres == 1 else 's' }}</a></p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
+from . import agenda as A
 from . import empresas as E
 from . import reglas, tablero
 from .app import ctx
@@ -93,6 +94,12 @@ def nueva():
 @panel.get("/empresas/<int:eid>")
 @requiere_admin
 def detalle(eid):
+    return _detalle(eid)
+
+
+def _detalle(eid: int, acceso_nuevo: dict | None = None):
+    """El detalle de una empresa. `acceso_nuevo` lleva una contraseña temporal recién creada:
+    se muestra en esta respuesta y en ninguna otra (no pasa por la sesión ni por una redirección)."""
     c = ctx()
     empresa = _empresa_o_404(eid)
     enlace = session.get("enlace_nuevo")
@@ -110,7 +117,56 @@ def detalle(eid):
         privacidad_url=f"{url_base()}/privacidad/{empresa['slug']}",
         eliminar_url=f"{url_base()}/eliminar-datos/{empresa['slug']}",
         manual=componer(c.config.plantilla_manual, empresa),
+        usuarios=c.almacen.usuarios_de(eid),
+        roles=reglas.ROLES,
+        agenda_url=f"{url_base()}/negocio/entrar",
+        acceso_nuevo=acceso_nuevo,
     )
+
+
+def _usuario_de(eid: int, uid: int) -> dict:
+    usuario = ctx().almacen.usuario(uid)
+    if not usuario or usuario["empresa_id"] != eid:
+        from flask import abort
+        abort(404)
+    return usuario
+
+
+@panel.post("/empresas/<int:eid>/usuarios")
+@requiere_admin
+def nuevo_usuario(eid):
+    c = ctx()
+    _empresa_o_404(eid)
+    usuario, clave, errores = A.crear_usuario(c.almacen, eid, request.form.get("nombre", ""), request.form.get("usuario", ""),
+                                              request.form.get("rol", ""), c.ahora())
+    if errores:
+        flash(" ".join(errores.values()), "error")
+        return redirect(url_for(".detalle", eid=eid) + "#accesos")
+    c.almacen.registrar_evento(eid, "acceso", f"Acceso a la agenda creado para {usuario['nombre']} ({reglas.ROLES[usuario['rol']]}).", c.ahora())
+    return _detalle(eid, acceso_nuevo={"usuario": usuario, "clave": clave})
+
+
+@panel.post("/empresas/<int:eid>/usuarios/<int:uid>/clave")
+@requiere_admin
+def nueva_clave_usuario(eid, uid):
+    c = ctx()
+    usuario = _usuario_de(eid, uid)
+    clave = A.restablecer_clave(c.almacen, uid)
+    c.almacen.registrar_evento(eid, "acceso", f"Contraseña temporal nueva para {usuario['nombre']}.", c.ahora())
+    return _detalle(eid, acceso_nuevo={"usuario": usuario, "clave": clave})
+
+
+@panel.post("/empresas/<int:eid>/usuarios/<int:uid>/activo")
+@requiere_admin
+def activar_usuario(eid, uid):
+    c = ctx()
+    usuario = _usuario_de(eid, uid)
+    activo = not usuario["activo"]
+    c.almacen.actualizar_usuario(uid, {"activo": activo})
+    texto = f"Acceso de {usuario['nombre']} {'activado' if activo else 'desactivado: ya no puede entrar'}."
+    c.almacen.registrar_evento(eid, "acceso", texto, c.ahora())
+    flash(texto, "ok")
+    return redirect(url_for(".detalle", eid=eid) + "#accesos")
 
 
 @panel.post("/empresas/<int:eid>/enlace")

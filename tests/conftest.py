@@ -188,7 +188,8 @@ def url_postgres():
     url = _postgres_de_prueba()
     almacen = AlmacenPostgres(url)
     with almacen._pool.connection() as con:
-        con.execute("TRUNCATE empresas, invitaciones, mensajes, pausas, mensajes_atendidos, uso, actividad, eventos RESTART IDENTITY CASCADE")
+        con.execute("TRUNCATE empresas, invitaciones, mensajes, pausas, mensajes_atendidos, uso, actividad, eventos, "
+                    "usuarios, pacientes, citas, bloqueos RESTART IDENTITY CASCADE")
     almacen.cerrar()
     return url
 

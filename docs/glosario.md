@@ -28,10 +28,14 @@ Para leer el código y los `docs/` sin perderse. Si algo de aquí contradice a o
 | **Publicar la app** | Pasar la app de Meta de "sin publicar" a activa. Sin esto, Meta no entrega mensajes reales al bot. Pide URL de privacidad y de borrado de datos, que da el panel (BOT-RF-20). |
 | **Coexistencia** | Usar el mismo número en la app de WhatsApp Business y en la API a la vez (D-05). |
 | **Derivar / marca** | Pasar el chat al dueño: Claude termina con `[PASAR_A_HUMANO]` (BOT-RF-04). |
+| **Agenda del negocio** | `/negocio`: donde la dueña y su asistente ven y cargan las citas, los pacientes y el horario de su empresa (BOT-RF-21 a 25). |
+| **Turno libre** | Un espacio del horario semanal (por ejemplo, lunes 10:30 en INCOR) que ninguna cita ocupa. |
+| **Bloqueo** | Días en que el negocio no atiende: la agenda no ofrece turnos libres. |
+| **Adelanto** | Lo que el paciente paga para reservar. Desde la etapa 2, el 50% (D-27). |
 | **Números ignorados** | Familia, proveedores y otros números a los que el bot nunca responde (BOT-RF-19). |
 | **PostgreSQL / Neon** | Base de datos donde se guarda todo (D-03). Neon la da gratis y la duerme sin uso. |
 | **Pool de conexiones** | Conexiones a la base que el servicio reutiliza; prueba cada una antes de usarla. |
-| **CI** | GitHub Actions corre los 89 tests en cada push, con un PostgreSQL temporal. |
+| **CI** | GitHub Actions corre los 120 tests en cada push, con un PostgreSQL temporal. |
 | **Blueprint** | `render.yaml`: describe el servicio para que Render lo cree desde el repositorio. |
 | **Dormirse** | Render gratis apaga el servicio tras 15 min sin tráfico y lo prende con el siguiente (D-02). |
 | **Doble (de prueba)** | Objeto falso que reemplaza a Meta, Claude o el verificador en los tests. |

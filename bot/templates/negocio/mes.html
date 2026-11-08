@@ -1,0 +1,27 @@
+{% extends "negocio/_base.html" %}
+{% block titulo %}Mes · {{ g.empresa.nombre }}{% endblock %}
+{% block contenido %}
+<div class="cabecera-agenda">
+  <h1>{{ mes | mes_largo | capitalize }} {{ anio }}</h1>
+  <div class="navegar">
+    <a class="boton" href="{{ url_for('negocio.mes', m='%d-%02d' % (anterior.year, anterior.month)) }}" aria-label="Mes anterior">‹</a>
+    <a class="boton" href="{{ url_for('negocio.mes') }}">Hoy</a>
+    <a class="boton" href="{{ url_for('negocio.mes', m='%d-%02d' % (siguiente.year, siguiente.month)) }}" aria-label="Mes siguiente">›</a>
+  </div>
+</div>
+<table class="mes">
+  <thead><tr>{% for n in ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] %}<th scope="col">{{ n }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for s in semanas %}<tr>
+    {% for d in s %}{% set a = por_dia[d] %}
+    <td class="{% if d.month != mes %}fuera{% endif %} {% if d == hoy %}hoy{% endif %} {% if a.bloqueo %}bloqueado{% endif %}">
+      <a href="{{ url_for('negocio.dia', d=d.isoformat()) }}" aria-label="{{ d | dia_largo }}: {{ a.citas }} cita{{ '' if a.citas == 1 else 's' }}{% if a.bloqueo %}, no atiende{% endif %}">
+        <span class="num">{{ d.day }}</span>{% if a.citas %}<span class="cuenta">{{ a.citas }}</span>{% endif %}
+      </a>
+    </td>
+    {% endfor %}
+  </tr>{% endfor %}
+  </tbody>
+</table>
+<p class="suave chico">El número rosado es la cantidad de citas de ese día. Los días rayados no se atiende. Toca un día para ver el detalle.</p>
+{% endblock %}

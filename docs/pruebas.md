@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 08/11/2026 · Versión: v2.5
+- Fecha: 08/11/2026 · Versión: v3.0
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -16,17 +16,21 @@ Los tests de `test_verificaciones.py` imitan las respuestas reales de Claude y d
 
 Los tests del almacén (`test_almacen.py`) son un **contrato** (D-12): cada uno corre con `AlmacenMemoria` y con `AlmacenPostgres`. Los de Postgres necesitan `TEST_DATABASE_URL`:
 
-- **En tu PC**, sin esa variable, salen **78 passed, 11 skipped**.
-- **En el CI**, un PostgreSQL 17 temporal; salen **89 passed**, y el CI falla si alguno se salta.
+- **En tu PC**, sin esa variable, salen **104 passed, 16 skipped**.
+- **En el CI**, un PostgreSQL 17 temporal; salen **120 passed**, y el CI falla si alguno se salta.
 - **Para correrlos en tu PC**, usa una base **de prueba**: los tests vacían las tablas. **Nunca la de producción.**
 
 ## 2. Estado
 
 | Corrida | Fecha | Resultado |
 |---|---|---|
+| v3.0 · entorno de armado, sin base | 08/11/2026 | **104 passed, 16 skipped** |
+| v3.0 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **120 passed**, 0 saltadas |
+| v3.0 · recorrido en navegador de celular (390 px), modo claro y oscuro | 08/11/2026 | Entrar, semana, día, mes, detalle de cita y horario con datos de ejemplo; sin errores en la consola |
+| v3.0 · GitHub Actions | — | **Pendiente** |
 | v2.5 · entorno de armado, sin base | 08/11/2026 | **78 passed, 11 skipped** |
 | v2.5 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **89 passed**, 0 saltadas |
-| v2.5 · GitHub Actions | — | **Pendiente** |
+| v2.5 · GitHub Actions | — | Se sube junto con la v3.0 si no se subió antes |
 | v2.4 · en vivo (Render + Meta + Claude) | 08/11/2026 | Hugo le escribió "Hola" al número de prueba (+1 555-046-3561) desde su celular y el bot respondió como Sentirse Única |
 | v2.4 · GitHub Actions | 08/11/2026 | **82 passed** (run #6, commit d369a84); Render Live con ese commit |
 | v2.4 · entorno de armado, sin base | 08/11/2026 | **71 passed, 11 skipped** |
@@ -89,7 +93,7 @@ Un servidor que acepta la conexión y nunca contesta: con `connect_timeout`, el 
 
 ## 4. Requisito → test
 
-Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v2.5): RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11, RF-12, RF-13, RF-14, RF-15, RF-16, RF-17, RF-18, RF-19.
+Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v2.5; RF-21 a 25, agregados en v3.0): RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11, RF-12, RF-13, RF-14, RF-15, RF-16, RF-17, RF-18, RF-19.
 
 | Requisito | Test | Archivo | Estado |
 |---|---|---|---|
@@ -173,6 +177,32 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 | BOT-RF-20 | `test_RF20_borrar_un_cliente_borra_solo_su_conversacion_en_esa_empresa` [memoria, postgres] | `test_almacen.py` | Pasa |
 | BOT-RF-20 | `test_RF20_las_paginas_de_privacidad_y_borrado_son_publicas_y_propias_de_cada_empresa` | `test_panel.py` | Pasa |
 | BOT-RF-20 | `test_RF20_el_admin_borra_los_datos_de_un_cliente_desde_el_panel` | `test_panel.py` | Pasa |
+| BOT-RF-21 | `test_RF21_con_la_contrasena_temporal_primero_hay_que_elegir_una_propia` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_el_admin_crea_el_acceso_y_ve_la_contrasena_temporal_una_sola_vez` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_el_panel_del_negocio_no_da_acceso_al_de_administracion` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_los_usuarios_tienen_login_unico_y_se_actualizan` [memoria, postgres] | `test_almacen.py` | Pasa |
+| BOT-RF-21 | `test_RF21_pacientes_y_citas_de_una_empresa_no_se_ven_desde_otra` [memoria, postgres] | `test_almacen.py` | Pasa |
+| BOT-RF-21 | `test_RF21_se_bloquea_tras_5_intentos_fallidos` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_sin_csrf_no_se_guarda_nada` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_sin_sesion_o_con_un_acceso_desactivado_no_se_entra` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_un_usuario_no_ve_ni_toca_lo_de_otra_empresa` | `test_negocio.py` | Pasa |
+| BOT-RF-21 | `test_RF21_usuarios_y_contrasenas_con_reglas_simples` | `test_agenda.py` | Pasa |
+| BOT-RF-22 | `test_RF22_la_agenda_muestra_los_turnos_libres_del_horario` | `test_negocio.py` | Pasa |
+| BOT-RF-22 | `test_RF22_la_semana_empieza_el_lunes_y_el_mes_se_completa_con_dias_vecinos` | `test_agenda.py` | Pasa |
+| BOT-RF-22 | `test_RF22_los_turnos_libres_salen_del_horario_y_las_citas_los_ocupan` | `test_agenda.py` | Pasa |
+| BOT-RF-22 | `test_RF22_una_cita_larga_ocupa_varios_turnos_y_una_fuera_de_horario_igual_aparece` | `test_agenda.py` | Pasa |
+| BOT-RF-23 | `test_RF23_choques_detecta_superposicion_salvo_canceladas_y_la_misma_cita` | `test_agenda.py` | Pasa |
+| BOT-RF-23 | `test_RF23_crear_una_cita_con_paciente_nuevo_y_no_dejar_otra_en_el_mismo_horario` | `test_negocio.py` | Pasa |
+| BOT-RF-23 | `test_RF23_las_citas_se_leen_por_rango_con_el_paciente_y_se_actualizan` [memoria, postgres] | `test_almacen.py` | Pasa |
+| BOT-RF-23 | `test_RF23_montos_en_bolivianos` | `test_agenda.py` | Pasa |
+| BOT-RF-23 | `test_RF23_reprogramar_marcar_atendida_y_cancelar` | `test_negocio.py` | Pasa |
+| BOT-RF-24 | `test_RF24_buscar_pacientes_y_borrar_uno_con_sus_citas` [memoria, postgres] | `test_almacen.py` | Pasa |
+| BOT-RF-24 | `test_RF24_lo_pagado_suma_adelantos_aunque_se_cancele_y_lo_cobrado_solo_si_se_atendio` | `test_agenda.py` | Pasa |
+| BOT-RF-24 | `test_RF24_pacientes_se_agregan_buscan_y_no_repiten_numero` | `test_negocio.py` | Pasa |
+| BOT-RF-25 | `test_RF25_bloqueos_por_rango_de_fechas` [memoria, postgres] | `test_almacen.py` | Pasa |
+| BOT-RF-25 | `test_RF25_el_horario_se_lee_del_formulario_y_explica_cada_fila_mal_escrita` | `test_agenda.py` | Pasa |
+| BOT-RF-25 | `test_RF25_el_horario_y_los_bloqueos_se_guardan_desde_el_panel` | `test_negocio.py` | Pasa |
+| BOT-RF-25 | `test_RF25_un_dia_bloqueado_no_ofrece_turnos_pero_muestra_sus_citas` | `test_agenda.py` | Pasa |
 
 "Pasa" se refiere a la corrida con PostgreSQL del entorno de armado. Cuando corras en tu PC y en Actions, actualiza la sección 2.
 

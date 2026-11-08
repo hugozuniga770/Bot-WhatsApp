@@ -1,0 +1,32 @@
+{% extends "negocio/_base.html" %}
+{% from "negocio/_campos.html" import fila %}
+{% block titulo %}{{ 'Entrar' if modo == 'entrar' else 'Tu contraseña' }} · Agenda{% endblock %}
+{% block barra %}{% if modo == 'clave' %}{{ super() }}{% endif %}{% endblock %}
+{% block contenido %}
+<div class="entrar">
+{% if modo == 'entrar' %}
+  <h1>Agenda</h1>
+  <p class="suave">Entra con el usuario y la contraseña que te dieron.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <label for="usuario">Usuario</label>
+    <input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+    <label for="clave">Contraseña</label>
+    <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+    {% if error %}<p class="error-campo">{{ error }}</p>{% endif %}
+    <div class="acciones"><button class="boton principal" type="submit">Entrar</button></div>
+  </form>
+  <p class="suave chico">¿Olvidaste la contraseña? Pide una nueva a quien administra el bot.</p>
+{% else %}
+  <h1>Tu contraseña</h1>
+  <p class="suave">{% if g.usuario.debe_cambiar %}Entraste con una contraseña temporal. Elige una que solo sepas tú; desde ahora entras con esa.{% else %}Cámbiala cuando quieras.{% endif %}</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    {{ fila('actual', 'Contraseña actual' ~ (' (la temporal)' if g.usuario.debe_cambiar else ''), errores=errores, tipo='password', extra='autocomplete="current-password" required') }}
+    {{ fila('nueva', 'Contraseña nueva', errores=errores, tipo='password', ayuda='Al menos 8 caracteres.', extra='autocomplete="new-password" required minlength="8"') }}
+    {{ fila('repetida', 'Repite la contraseña nueva', errores=errores, tipo='password', extra='autocomplete="new-password" required') }}
+    <div class="acciones"><button class="boton principal" type="submit">Guardar contraseña</button></div>
+  </form>
+{% endif %}
+</div>
+{% endblock %}

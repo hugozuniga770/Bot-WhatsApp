@@ -49,10 +49,32 @@ def telefono(numero: str) -> str:
     return f"+{numero}" if numero else "—"
 
 
+MESES_LARGOS = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre",
+                "octubre", "noviembre", "diciembre")
+
+
+def dia_largo(d) -> str:
+    """'lunes 9 de nov'"""
+    if isinstance(d, datetime):
+        d = d.date()
+    return f"{reglas.DIAS[d.weekday()]} {d.day} de {MESES[d.month - 1]}"
+
+
 def registrar_filtros(app):
+    from zoneinfo import ZoneInfo
+
     from .app import ctx
 
-    app.jinja_env.filters.update(dinero=dinero, tokens=tokens, fecha=fecha, telefono=telefono, duracion=duracion)
+    def hora(momento) -> str:
+        return momento.astimezone(ZoneInfo(ctx().config.zona_horaria)).strftime("%H:%M") if momento else "—"
+
+    def dia_local(momento):
+        return momento.astimezone(ZoneInfo(ctx().config.zona_horaria)).date()
+
+    app.jinja_env.filters.update(dinero=dinero, tokens=tokens, fecha=fecha, telefono=telefono, duracion=duracion,
+                                 hora=hora, dia_local=dia_local, dia_largo=dia_largo, bs=reglas.bolivianos,
+                                 estado_cita=lambda e: reglas.ESTADOS_CITA.get(e, e),
+                                 mes_largo=lambda m: MESES_LARGOS[m - 1])
 
     @app.context_processor
     def comunes():

@@ -1,0 +1,49 @@
+{% extends "negocio/_base.html" %}
+{% from "negocio/_campos.html" import fila %}
+{% block titulo %}{{ paciente.nombre }} · Pacientes{% endblock %}
+{% block contenido %}
+<p><a href="{{ url_for('negocio.pacientes') }}">Todos los pacientes</a></p>
+<h1>{{ paciente.nombre }}</h1>
+<p class="suave">{% if paciente.telefono %}<a href="https://wa.me/{{ paciente.telefono }}" target="_blank" rel="noopener noreferrer">{{ paciente.telefono | telefono }}</a>{% else %}Sin número{% endif %}</p>
+<dl class="datos-credito">
+  <div><dt>Citas</dt><dd>{{ resumen.citas }}</dd></div>
+  <div><dt>Pagado en total</dt><dd>{{ resumen.pagado | bs }}</dd></div>
+</dl>
+<div class="acciones"><a class="boton principal" href="{{ url_for('negocio.nueva_cita', paciente_id=paciente.id) }}">Nueva cita para {{ paciente.nombre.split()[0] }}</a></div>
+
+<section class="seccion">
+  <h2>Sus citas</h2>
+  {% if citas %}
+  <ul class="agenda">
+    {% for c in citas %}
+    <li class="cita {{ c.estado }}"><a href="{{ url_for('negocio.cita', cid=c.id) }}">
+      <time datetime="{{ c.inicio.isoformat() }}">{{ c.inicio | dia_local | fecha }}</time>
+      <span class="quien"><strong>{{ c.inicio | hora }}</strong><span class="suave chico">{{ c.servicio or 'Sin detalle' }}{% if c.sede %} · {{ c.sede }}{% endif %}</span></span>
+      <span class="estado-cita">{{ c.estado | estado_cita }}</span>
+    </a></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="suave">Todavía no tiene citas.</p>{% endif %}
+</section>
+
+<section class="seccion">
+  <details {% if errores %}open{% endif %}>
+    <summary>Corregir sus datos</summary>
+    {% set v = valores or paciente %}
+    <form method="post">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      {{ fila('nombre', 'Nombre', v.get('nombre'), errores, extra='required') }}
+      {{ fila('telefono', 'WhatsApp', v.get('telefono'), errores, tipo='tel', ayuda='Con código de país, por ejemplo 591 70000000.') }}
+      <div class="acciones"><button class="boton principal" type="submit">Guardar</button></div>
+    </form>
+  </details>
+  <details>
+    <summary>Borrar paciente</summary>
+    <p class="suave chico">Se borran sus datos y todas sus citas, también de las cuentas. Úsalo si el paciente pide que borren sus datos.</p>
+    <form method="post" action="{{ url_for('negocio.borrar_paciente', pid=paciente.id) }}" data-confirmar="¿Borrar a {{ paciente.nombre }} y todas sus citas? No se puede deshacer.">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <div class="acciones"><button class="boton" type="submit">Borrar a {{ paciente.nombre }}</button></div>
+    </form>
+  </details>
+</section>
+{% endblock %}

@@ -112,6 +112,14 @@ El número de prueba de Meta no deja cambiar su nombre visible; la foto de perfi
 
 **Comprobación:** la empresa dice **Activo** y la lista muestra los días de crédito.
 
+## Paso 6b. La agenda del negocio
+
+1. En el detalle de la empresa → **Agenda del negocio** → **Crear un acceso**: nombre, usuario y rol. Uno para la dueña y otro para la asistente.
+2. Copia el texto que aparece (dirección, usuario y contraseña temporal) o tócalo **Enviar por WhatsApp**. La contraseña no se vuelve a mostrar; si se pierde, **Contraseña nueva**.
+3. Cada una entra en `https://<tu-servicio>.onrender.com/negocio/entrar`, elige su contraseña y carga el **Horario**: una fila por bloque (día, sede, desde, hasta) y la duración del turno.
+
+**Comprobación:** en **Agenda** aparecen los turnos libres de la semana; al tocar uno y guardar una cita, el turno pasa a ocupado y otra cita en ese horario no se deja guardar.
+
 ## Paso 7. Token permanente de Meta
 
 El token de **Configuración de la API** vence en unas 24 h, y la verificación lo marca en amarillo. Para uno permanente:
@@ -152,3 +160,5 @@ Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso act
 | "La base de datos no respondió" | Neon caído o sin red (si solo dormía, el bot lo despierta solo) | El formulario no se envía y conserva tus llaves: espera un minuto y vuelve a tocar el botón. `https://<tu-servicio>.onrender.com/salud/base` debe decir `ok`. Si se repite, busca en los logs de Render `Falló una conexión a la base`: dice el motivo |
 | En Actions aparece "pages-build-deployment" | GitHub Pages quedó activado en el repositorio | No hace falta para el bot: GitHub → Settings → Pages → desactivarlo |
 | Render no despliega tras un push | El CI falló (`checksPass`, D-09) | Mira Actions |
+| La agenda no muestra turnos libres | Falta cargar el horario, o el día está bloqueado | `/negocio/horario` |
+| "Usuario o contraseña incorrectos" en la agenda | Contraseña equivocada o acceso desactivado | En el panel → Agenda del negocio → **Contraseña nueva** o **Activar** |

@@ -1,0 +1,55 @@
+{% extends "negocio/_base.html" %}
+{% block titulo %}Horario · {{ g.empresa.nombre }}{% endblock %}
+{% set DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] %}
+{% block contenido %}
+<h1>Horario</h1>
+<p class="suave">Una fila por cada bloque de atención: el día, la sede y de qué hora a qué hora. Con esto la agenda calcula los turnos libres.</p>
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <label for="duracion">Duración de cada turno (minutos)</label>
+  <input id="duracion" name="duracion" type="number" min="5" max="240" inputmode="numeric" value="{{ agenda.get('duracion') or 30 }}" required>
+  {% if errores.get('duracion') %}<p class="error-campo">{{ errores['duracion'] }}</p>{% endif %}
+
+  <div class="filas-horario">
+    {% for t in (agenda.get('turnos') or []) + [{}, {}, {}] %}{% set i = loop.index0 %}
+    <div class="fila {% if errores.get('fila_' ~ i) %}con-error{% endif %}">
+      <div><label for="dia_{{ i }}">Día</label>
+        <select id="dia_{{ i }}" name="dia_{{ i }}">
+          {% for n in DIAS %}<option value="{{ loop.index0 }}" {% if t.get('dia') == loop.index0 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select></div>
+      <div><label for="sede_{{ i }}">Sede</label><input id="sede_{{ i }}" name="sede_{{ i }}" type="text" value="{{ t.get('sede', '') }}" placeholder="Ej.: INCOR"></div>
+      <div><label for="desde_{{ i }}">Desde</label><input id="desde_{{ i }}" name="desde_{{ i }}" type="time" step="300" value="{{ t.get('desde', '') }}"></div>
+      <div><label for="hasta_{{ i }}">Hasta</label><input id="hasta_{{ i }}" name="hasta_{{ i }}" type="time" step="300" value="{{ t.get('hasta', '') }}"></div>
+      {% if errores.get('fila_' ~ i) %}<p class="error-campo">{{ errores['fila_' ~ i] }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="suave chico">Para quitar un bloque, borra sus horas y guarda. Para agregar más de tres, guarda y vuelven a aparecer filas vacías.</p>
+  <div class="acciones"><button class="boton principal" type="submit">Guardar horario</button></div>
+</form>
+
+<section class="seccion" id="bloqueos">
+  <h2>Días que no atiende</h2>
+  <p class="suave chico">Feriados, vacaciones o un día que no puede. Esos días no aparecen turnos libres.</p>
+  {% if bloqueos %}
+  <ul class="lista-simple">
+    {% for b in bloqueos %}
+    <li><span><strong>{{ b.desde | fecha }}{% if b.hasta != b.desde %} al {{ b.hasta | fecha }}{% endif %}</strong>{% if b.motivo %} <span class="suave">· {{ b.motivo }}</span>{% endif %}</span>
+      <form class="en-linea" method="post" action="{{ url_for('negocio.borrar_bloqueo', bid=b.id) }}" data-confirmar="¿Quitar este bloqueo?">
+        <input type="hidden" name="csrf" value="{{ csrf() }}"><button class="boton texto" type="submit">Quitar</button>
+      </form></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post" action="{{ url_for('negocio.nuevo_bloqueo') }}">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <div class="fila-doble">
+      <div><label for="b-desde">Desde</label><input id="b-desde" name="desde" type="date" min="{{ hoy.isoformat() }}" required></div>
+      <div><label for="b-hasta">Hasta<span class="ayuda">Vacío = un solo día</span></label><input id="b-hasta" name="hasta" type="date" min="{{ hoy.isoformat() }}"></div>
+    </div>
+    <label for="b-motivo">Motivo (opcional)</label>
+    <input id="b-motivo" name="motivo" type="text" maxlength="80" placeholder="Ej.: feriado, viaje">
+    <div class="acciones"><button class="boton" type="submit">Bloquear esos días</button></div>
+  </form>
+</section>
+{% endblock %}

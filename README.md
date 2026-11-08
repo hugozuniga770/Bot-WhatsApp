@@ -1,9 +1,9 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.5
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.0
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
-- Estado al 08/11/2026: v2.4 en línea en Render con el CI en verde (82 pruebas, run #6). **Prueba de punta a punta superada:** Hugo le escribió "Hola" al número de prueba de Meta y el bot de Sentirse Única le respondió. La v2.5 anota en la Actividad los mensajes que Meta no pudo entregar, con el motivo, y deja cambiar el token de verificación desde el panel; 89 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.5, cargar en el panel la información del negocio (paso 2), el logo y el número real (D-05).
+- Estado al 08/11/2026: v2.4 en línea en Render con el CI en verde (82 pruebas, run #6). **Prueba de punta a punta superada:** el bot de Sentirse Única respondió por WhatsApp en el número de prueba. La v2.5 anota en la Actividad los mensajes que Meta no pudo entregar y deja cambiar el token de verificación. La **v3.0** suma la **agenda de cada negocio** (etapa 1): accesos propios para la dueña y su asistente, agenda de semana, día y mes con turnos libres, citas, pacientes, horario y días bloqueados. 120 pruebas en el entorno de armado. **Pendiente:** el CI de la v3.0; la etapa 2 (el bot agenda y cobra el adelanto, D-27 y D-28); el número real con coexistencia (D-05).
 
 ## 1. Qué hace
 
@@ -37,6 +37,11 @@ Todo se maneja desde un **panel** pensado para el celular:
 | BOT-RF-18 | En prueba, el bot solo le responde al dueño; pausado o sin datos, a nadie |
 | BOT-RF-19 | No responde a los números de la lista de ignorados (familia, proveedores) |
 | BOT-RF-20 | Cada empresa tiene su página pública de privacidad y de borrado de datos (las pide Meta). Un cliente que pide borrar sus datos se deriva al dueño, y desde el panel se borra su conversación |
+| BOT-RF-21 | Cada negocio tiene accesos propios (dueña y asistente) a `/negocio`: contraseña temporal que hay que cambiar al entrar, guardada con hash, bloqueo tras 5 intentos, y solo ve los datos de su empresa |
+| BOT-RF-22 | Agenda de semana, día y mes, con las citas y los turnos libres que salen del horario |
+| BOT-RF-23 | Citas cargadas a mano: no deja dos citas en el mismo horario; se reprograman, se cancelan (liberan el horario) o se marcan atendidas con lo cobrado y cómo se pagó |
+| BOT-RF-24 | Lista de pacientes con búsqueda, sus citas y cuánto pagó; un número no se repite dentro del negocio |
+| BOT-RF-25 | Horario semanal por sede, duración del turno y días bloqueados (feriados, viajes) |
 
 ## 2. Cómo funciona
 
@@ -71,6 +76,7 @@ Detalle en [docs/arquitectura.md](docs/arquitectura.md).
 4. **Publicar la app en Meta** (una vez por app): en Configuración de la app → Básica pones el ícono, la categoría y las dos direcciones que muestra el panel en **Conexión** (privacidad y borrado de datos). Después la publicas. Sin esto, Meta no le entrega al bot los mensajes reales.
 5. **Verificar y activar:** tocas **Verificar todo** y **Enviar mensaje de prueba**, y luego **Activar para todos**. Si algo falla, el panel no deja activar y explica qué arreglar. Si Meta acepta un mensaje pero no lo puede entregar (por ejemplo, por la regla de las 24 horas), el motivo aparece en **Actividad**.
 6. **Día a día:** la lista muestra cuántos días de crédito quedan por empresa. Cuando cargues más créditos en platform.claude.com, actualiza el saldo en el panel.
+7. **Agenda del negocio:** en el detalle de la empresa, sección **Agenda del negocio**, creas un acceso para la dueña y otro para su asistente. El panel muestra una contraseña temporal una sola vez, con un botón para mandarla por WhatsApp. Ellas entran en `/negocio`, eligen su contraseña, cargan el horario y desde ahí manejan citas y pacientes.
 
 ## 4. Requisitos
 
@@ -100,8 +106,8 @@ Para que Meta llegue a tu PC mientras pruebas: `cloudflared tunnel --url http://
 python -m pytest -v
 ```
 
-- **En tu PC:** 78 passed y 11 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
-- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 89. El CI falla si alguna se salta.
+- **En tu PC:** 104 passed y 16 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
+- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 120. El CI falla si alguna se salta.
 
 Ninguna prueba usa la red: Meta, Claude y las verificaciones se reemplazan por dobles. [docs/pruebas.md](docs/pruebas.md) relaciona cada test con su requisito.
 
@@ -120,6 +126,8 @@ Paso a paso, con una comprobación después de cada paso y los problemas frecuen
 bot/
   app.py            armado de la app y webhook de cada empresa (/webhook/<slug>)
   panel.py          panel del administrador (/panel)
+  negocio.py        panel de cada negocio (/negocio): agenda, citas, pacientes y horario
+  agenda.py         accesos, citas, pacientes y horario del negocio
   alta.py           enlace de alta (/alta/<token>)
   servicios.py      atención de un mensaje de principio a fin
   reglas.py         todas las reglas; funciones puras, sin red ni base
@@ -136,7 +144,7 @@ bot/
   formato.py        dinero, fechas y tiempos en las pantallas
   templates/        pantallas (Jinja)
   static/           estilos y JavaScript
-tests/              89 tests y conftest.py con los dobles
+tests/              120 tests y conftest.py con los dobles
 docs/               arquitectura, despliegue, decisiones, pruebas, cambios, glosario y capturas
 instrucciones.md    plantilla común del manual (vale para todas las empresas)
 render.yaml         cómo Render crea y arranca el servicio
@@ -161,7 +169,9 @@ render.yaml         cómo Render crea y arranca el servicio
 - **Aviso al dueño [PROVISIONAL]:** WhatsApp solo deja mandar mensajes libres a quien escribió al negocio en las últimas 24 h. Si no, el aviso falla y el motivo queda en Actividad. Para que siempre llegue haría falta una plantilla aprobada por Meta.
 - **El token de verificación queda en los registros de Render** (D-24): Meta lo manda dentro de la dirección. Solo sirve para verificar el webhook, no para mandar ni leer mensajes. Cámbialo desde el panel después de conectar.
 - **Render gratis se duerme** tras 15 min sin tráfico: el primer mensaje después tarda alrededor de un minuto (D-02).
-- **Un solo administrador** (D-20): una contraseña, sin usuarios ni permisos por empresa.
+- **Un solo administrador** (D-20): una contraseña para todo el panel de administración. Los negocios tienen sus propios accesos, pero solo a su agenda (BOT-RF-21).
+- **La agenda, etapa 1:** las citas las cargan la dueña o la asistente. Que el bot ofrezca turnos, cobre el 50% y avise a la asistente es la etapa 2 (D-27, D-28). Las cuentas por mes y los recordatorios, la etapa 3.
+- **Sin notas clínicas en la agenda:** solo nombre, teléfono, servicio y pagos. Los datos de salud no se guardan aquí.
 - **Decisiones y cambios:** [docs/decisiones.md](docs/decisiones.md) y [docs/cambios.md](docs/cambios.md).
 
 ## 10. Declaración de uso de IA

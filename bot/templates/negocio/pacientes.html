@@ -1,0 +1,37 @@
+{% extends "negocio/_base.html" %}
+{% from "negocio/_campos.html" import fila %}
+{% block titulo %}Pacientes · {{ g.empresa.nombre }}{% endblock %}
+{% block contenido %}
+<h1>Pacientes</h1>
+<form method="get" class="buscador" role="search">
+  <label for="q">Buscar por nombre o número</label>
+  <div class="copiable">
+    <input id="q" name="q" type="search" value="{{ buscar }}" autocomplete="off">
+    <button class="boton" type="submit">Buscar</button>
+  </div>
+</form>
+{% if pacientes %}
+<ul class="lista-simple">
+  {% for p in pacientes %}
+  <li><a href="{{ url_for('negocio.paciente', pid=p.id) }}"><strong>{{ p.nombre }}</strong></a>
+      <span class="suave chico">{{ p.telefono | telefono if p.telefono else 'Sin número' }}</span></li>
+  {% endfor %}
+</ul>
+{% if pacientes | length == 200 %}<p class="suave chico">Se muestran los primeros 200. Busca para encontrar a alguien en particular.</p>{% endif %}
+{% else %}
+<p class="suave">{{ 'Nadie coincide con «' ~ buscar ~ '».' if buscar else 'Todavía no hay pacientes. Se agregan solos al crear una cita, o aquí abajo.' }}</p>
+{% endif %}
+
+<section class="seccion">
+  <details {% if errores %}open{% endif %}>
+    <summary>Agregar un paciente</summary>
+    {% set v = valores or {} %}
+    <form method="post">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      {{ fila('nombre', 'Nombre', v.get('nombre'), errores, extra='required autocomplete="off"') }}
+      {{ fila('telefono', 'WhatsApp', v.get('telefono'), errores, tipo='tel', ayuda='Con código de país, por ejemplo 591 70000000.', extra='autocomplete="off"') }}
+      <div class="acciones"><button class="boton principal" type="submit">Agregar</button></div>
+    </form>
+  </details>
+</section>
+{% endblock %}

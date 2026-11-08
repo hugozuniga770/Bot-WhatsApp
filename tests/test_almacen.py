@@ -226,3 +226,85 @@ def test_RF20_borrar_un_cliente_borra_solo_su_conversacion_en_esa_empresa(almace
     assert borrados == 2
     assert almacen_contrato.historial(a["id"], CLIENTE) == [] and almacen_contrato.pausado_hasta(a["id"], CLIENTE) is None
     assert len(almacen_contrato.historial(a["id"], DUENO)) == 1 and len(almacen_contrato.historial(b["id"], CLIENTE)) == 1
+
+
+# ------------------------------------------------------------------ agenda del negocio (v3.0)
+def test_RF21_los_usuarios_tienen_login_unico_y_se_actualizan(almacen_contrato, dos, ahora):
+    a, b = dos
+    # Dado un usuario de la empresa A
+    u = almacen_contrato.crear_usuario(a["id"], "giovanna", "Giovanna", "dueno", "hash1", ahora)
+    assert (u["debe_cambiar"], u["activo"], u["ultimo_ingreso"]) == (True, True, None)
+    # Entonces otro usuario no puede usar el mismo login, ni en otra empresa
+    with pytest.raises(ValueError):
+        almacen_contrato.crear_usuario(b["id"], "giovanna", "Otra", "asistente", "hash2", ahora)
+    # Y sus datos se actualizan por partes
+    almacen_contrato.actualizar_usuario(u["id"], {"debe_cambiar": False, "ultimo_ingreso": ahora, "empresa_id": b["id"]})
+    leido = almacen_contrato.usuario_por_login("giovanna")
+    assert (leido["debe_cambiar"], leido["ultimo_ingreso"], leido["empresa_id"]) == (False, ahora, a["id"])
+    assert [x["usuario"] for x in almacen_contrato.usuarios_de(a["id"])] == ["giovanna"]
+    assert almacen_contrato.usuarios_de(b["id"]) == []
+
+
+def test_RF21_pacientes_y_citas_de_una_empresa_no_se_ven_desde_otra(almacen_contrato, dos, ahora):
+    a, b = dos
+    # Dado un paciente con una cita en la empresa A
+    p = almacen_contrato.crear_paciente(a["id"], "Ana Pérez", "59170000001", ahora)
+    c = almacen_contrato.crear_cita(a["id"], {"paciente_id": p["id"], "inicio": ahora, "fin": ahora + timedelta(minutes=30),
+                                               "estado": "confirmada", "adelanto": 125}, ahora)
+    # Entonces desde la empresa B no se puede leer, cambiar ni borrar nada de eso
+    assert almacen_contrato.paciente(b["id"], p["id"]) is None
+    assert almacen_contrato.paciente_por_telefono(b["id"], "59170000001") is None
+    assert almacen_contrato.pacientes(b["id"]) == []
+    assert almacen_contrato.cita(b["id"], c["id"]) is None
+    assert almacen_contrato.citas(b["id"], ahora - timedelta(days=1), ahora + timedelta(days=1)) == []
+    assert almacen_contrato.actualizar_cita(b["id"], c["id"], {"estado": "cancelada"}, ahora) is None
+    assert almacen_contrato.actualizar_paciente(b["id"], p["id"], {"nombre": "X"}) is None
+    assert almacen_contrato.borrar_paciente(b["id"], p["id"]) is False
+    # Y en A todo sigue intacto
+    assert almacen_contrato.cita(a["id"], c["id"])["estado"] == "confirmada"
+
+
+def test_RF23_las_citas_se_leen_por_rango_con_el_paciente_y_se_actualizan(almacen_contrato, dos, ahora):
+    a, _ = dos
+    p = almacen_contrato.crear_paciente(a["id"], "Ana Pérez", "59170000001", ahora)
+    hora = timedelta(hours=1)
+    # Dadas dos citas, una hoy y otra mañana
+    hoy = almacen_contrato.crear_cita(a["id"], {"paciente_id": p["id"], "inicio": ahora, "fin": ahora + hora,
+                                                 "estado": "confirmada", "sede": "INCOR", "adelanto": 125}, ahora)
+    almacen_contrato.crear_cita(a["id"], {"paciente_id": p["id"], "inicio": ahora + timedelta(days=1),
+                                          "fin": ahora + timedelta(days=1) + hora, "estado": "confirmada"}, ahora)
+    # Cuando se pide el rango de hoy
+    del_dia = almacen_contrato.citas(a["id"], ahora - hora, ahora + 2 * hora)
+    # Entonces sale solo la de hoy, con el nombre y el teléfono del paciente
+    assert [(c["id"], c["paciente_nombre"], c["paciente_telefono"], c["sede"], c["adelanto"]) for c in del_dia] == [
+        (hoy["id"], "Ana Pérez", "59170000001", "INCOR", 125.0)]
+    # Y al marcarla atendida queda lo cobrado
+    atendida = almacen_contrato.actualizar_cita(a["id"], hoy["id"], {"estado": "atendida", "cobrado": 125, "metodo_pago": "qr"}, ahora)
+    assert (atendida["estado"], atendida["cobrado"], atendida["metodo_pago"]) == ("atendida", 125.0, "qr")
+    assert [c["inicio"] for c in almacen_contrato.citas_de_paciente(a["id"], p["id"])] == [ahora + timedelta(days=1), ahora]
+
+
+def test_RF24_buscar_pacientes_y_borrar_uno_con_sus_citas(almacen_contrato, dos, ahora):
+    a, _ = dos
+    ana = almacen_contrato.crear_paciente(a["id"], "Ana Rojas", "59170000001", ahora)
+    almacen_contrato.crear_paciente(a["id"], "Beatriz Soliz", "59170000002", ahora)
+    almacen_contrato.crear_cita(a["id"], {"paciente_id": ana["id"], "inicio": ahora, "fin": ahora + timedelta(minutes=30),
+                                          "estado": "confirmada"}, ahora)
+    # Se busca por nombre (sin importar mayúsculas) o por número
+    assert [p["nombre"] for p in almacen_contrato.pacientes(a["id"], "ROJAS")] == ["Ana Rojas"]
+    assert [p["nombre"] for p in almacen_contrato.pacientes(a["id"], "0002")] == ["Beatriz Soliz"]
+    assert [p["nombre"] for p in almacen_contrato.pacientes(a["id"])] == ["Ana Rojas", "Beatriz Soliz"]
+    # Al borrar a un paciente se borran también sus citas
+    assert almacen_contrato.borrar_paciente(a["id"], ana["id"]) is True
+    assert almacen_contrato.citas(a["id"], ahora - timedelta(days=1), ahora + timedelta(days=1)) == []
+
+
+def test_RF25_bloqueos_por_rango_de_fechas(almacen_contrato, dos, ahora):
+    a, b = dos
+    hoy = date(2026, 11, 9)
+    feriado = almacen_contrato.crear_bloqueo(a["id"], hoy, hoy + timedelta(days=2), "Viaje")
+    # Se encuentran los bloqueos que tocan el rango pedido, solo de esa empresa
+    assert [x["motivo"] for x in almacen_contrato.bloqueos(a["id"], hoy + timedelta(days=2), hoy + timedelta(days=9))] == ["Viaje"]
+    assert almacen_contrato.bloqueos(a["id"], hoy + timedelta(days=3), hoy + timedelta(days=9)) == []
+    assert almacen_contrato.borrar_bloqueo(b["id"], feriado["id"]) is False
+    assert almacen_contrato.borrar_bloqueo(a["id"], feriado["id"]) is True

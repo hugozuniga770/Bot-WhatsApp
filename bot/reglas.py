@@ -322,3 +322,149 @@ def hace(momento: datetime | None, ahora: datetime) -> str:
         return f"hace {segundos // 3600} h"
     dias = segundos // 86400
     return "hace 1 día" if dias == 1 else f"hace {dias} días"
+
+
+# ---------------------------------------------------------------- agenda del negocio (v3.0)
+
+ESTADOS_CITA = {
+    "pendiente_pago": "Pendiente de pago",
+    "por_revisar": "Pago por revisar",
+    "confirmada": "Confirmada",
+    "atendida": "Atendida",
+    "no_asistio": "No asistió",
+    "cancelada": "Cancelada",
+}
+# Las canceladas liberan el horario; todas las demás lo ocupan.
+ESTADOS_QUE_OCUPAN = ("pendiente_pago", "por_revisar", "confirmada", "atendida", "no_asistio")
+METODOS_PAGO = ("efectivo", "qr", "transferencia", "otro")
+DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+ROLES = {"dueno": "Dueña o dueño", "asistente": "Asistente"}
+DURACION_POR_DEFECTO = 30
+
+
+def leer_hora(texto: str):
+    """'10:30' -> (10, 30); None si no es una hora válida."""
+    m = re.fullmatch(r"\s*(\d{1,2})[:.](\d{2})\s*", texto or "")
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    return (h, mi) if 0 <= h < 24 and 0 <= mi < 60 else None
+
+
+def momento_local(dia: date, hora: str, zona: str) -> datetime | None:
+    """Fecha del calendario + '10:30' en la zona del negocio -> datetime con zona."""
+    hm = leer_hora(hora)
+    return datetime(dia.year, dia.month, dia.day, hm[0], hm[1], tzinfo=ZoneInfo(zona)) if hm else None
+
+
+def rango_del_dia(dia: date, zona: str) -> tuple[datetime, datetime]:
+    inicio = datetime(dia.year, dia.month, dia.day, tzinfo=ZoneInfo(zona))
+    return inicio, inicio + timedelta(days=1)
+
+
+def se_superponen(inicio_a, fin_a, inicio_b, fin_b) -> bool:
+    return inicio_a < fin_b and inicio_b < fin_a
+
+
+def choques(inicio: datetime, fin: datetime, citas: list[dict], salvo_id=None) -> list[dict]:
+    """Las citas que ya ocupan algo de ese horario (sin contar la que se está editando)."""
+    return [c for c in citas if c["estado"] in ESTADOS_QUE_OCUPAN and c["id"] != salvo_id
+            and se_superponen(inicio, fin, c["inicio"], c["fin"])]
+
+
+def errores_de_horario(turnos: list[dict]) -> dict[int, str]:
+    """Revisa cada fila del horario semanal: {indice: error}."""
+    errores = {}
+    for i, t in enumerate(turnos):
+        desde, hasta = leer_hora(t.get("desde", "")), leer_hora(t.get("hasta", ""))
+        if not isinstance(t.get("dia"), int) or not 0 <= t["dia"] <= 6:
+            errores[i] = "Elige el día."
+        elif not desde or not hasta:
+            errores[i] = "Escribe las horas así: 10:30."
+        elif hasta <= desde:
+            errores[i] = "La hora de salida tiene que ser después de la de entrada."
+    return errores
+
+
+def esta_bloqueado(dia: date, bloqueos: list[dict]) -> dict | None:
+    return next((b for b in bloqueos if b["desde"] <= dia <= b["hasta"]), None)
+
+
+def turnos_del_horario(dia: date, agenda: dict, zona: str) -> list[dict]:
+    """Los turnos que salen del horario semanal para ese día (sin mirar las citas)."""
+    duracion = timedelta(minutes=int((agenda or {}).get("duracion") or DURACION_POR_DEFECTO))
+    turnos = []
+    for t in (agenda or {}).get("turnos", []):
+        if t.get("dia") != dia.weekday():
+            continue
+        inicio, tope = momento_local(dia, t.get("desde", ""), zona), momento_local(dia, t.get("hasta", ""), zona)
+        if not inicio or not tope:
+            continue
+        while inicio + duracion <= tope:
+            turnos.append({"inicio": inicio, "fin": inicio + duracion, "sede": t.get("sede", "")})
+            inicio += duracion
+    return sorted(turnos, key=lambda x: x["inicio"])
+
+
+def agenda_del_dia(dia: date, agenda: dict, citas: list[dict], bloqueos: list[dict], zona: str) -> dict:
+    """Todo lo de un día, en orden: las citas y los turnos libres que quedan.
+
+    Un turno del horario está libre si ninguna cita que ocupa se le superpone.
+    Un día bloqueado (feriado, vacaciones) no tiene turnos libres, pero sí muestra
+    las citas que ya hubiera.
+    """
+    del_dia = [c for c in citas if c["inicio"].astimezone(ZoneInfo(zona)).date() == dia and c["estado"] != "cancelada"]
+    bloqueo = esta_bloqueado(dia, bloqueos)
+    libres = [] if bloqueo else [t for t in turnos_del_horario(dia, agenda, zona) if not choques(t["inicio"], t["fin"], del_dia)]
+    items = [{"tipo": "cita", "inicio": c["inicio"], "cita": c} for c in del_dia]
+    items += [{"tipo": "libre", "inicio": t["inicio"], "turno": t} for t in libres]
+    items.sort(key=lambda x: (x["inicio"], x["tipo"]))
+    return {"dia": dia, "items": items, "citas": len(del_dia), "libres": len(libres), "bloqueo": bloqueo}
+
+
+def semana_de(dia: date) -> list[date]:
+    lunes = dia - timedelta(days=dia.weekday())
+    return [lunes + timedelta(days=i) for i in range(7)]
+
+
+def cuadricula_mes(anio: int, mes: int) -> list[list[date]]:
+    """Semanas (de lunes a domingo) que cubren el mes, con los días vecinos para completar."""
+    primero = date(anio, mes, 1)
+    siguiente = date(anio + (mes == 12), mes % 12 + 1, 1)
+    dia, semanas = primero - timedelta(days=primero.weekday()), []
+    while dia < siguiente:
+        semanas.append([dia + timedelta(days=i) for i in range(7)])
+        dia += timedelta(days=7)
+    return semanas
+
+
+def normalizar_usuario(texto: str) -> str:
+    """'Giovanna.Daza ' -> 'giovanna.daza'. Solo letras sin tilde, números, punto, guion y guion bajo."""
+    sin_tildes = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9._-]", "", sin_tildes.strip().lower().replace(" ", "."))
+
+
+def errores_de_usuario(usuario: str, nombre: str) -> dict[str, str]:
+    errores = {}
+    if not 3 <= len(usuario) <= 30:
+        errores["usuario"] = "El usuario tiene que tener entre 3 y 30 letras o números."
+    if not (nombre or "").strip():
+        errores["nombre"] = "Escribe el nombre de la persona."
+    return errores
+
+
+def errores_de_clave(nueva: str, repetida: str) -> dict[str, str]:
+    if len(nueva or "") < 8:
+        return {"nueva": "La contraseña tiene que tener al menos 8 caracteres."}
+    if nueva != repetida:
+        return {"repetida": "Las dos contraseñas no son iguales."}
+    return {}
+
+
+def bolivianos(valor) -> str:
+    """2100 -> 'Bs 2.100'; 62.5 -> 'Bs 62,50'."""
+    if valor is None:
+        return "—"
+    valor = float(valor)
+    entero = f"{int(round(valor)):,}".replace(",", ".")
+    return f"Bs {entero}" if abs(valor - round(valor)) < 0.005 else f"Bs {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
