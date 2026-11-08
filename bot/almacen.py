@@ -88,6 +88,27 @@ CREATE INDEX IF NOT EXISTS eventos_por_empresa ON eventos (empresa_id, id DESC);
 """
 
 
+class BaseDeDatosNoDisponible(Exception):
+    """La base no respondió a tiempo (por ejemplo, Neon despertando o caído)."""
+
+
+# Parámetros del pool para Neon (D-22):
+# - connect_timeout: un intento de conexión nunca espera más de 10 s (sin esto, uno
+#   colgado deja al pool sin conexiones y todas las páginas fallan a los 15 s).
+# - keepalives: detectan rápido una conexión que Neon cortó.
+# - max_idle: una conexión sin usar se cierra al minuto, antes de que Neon la corte.
+# - reconnect_timeout: si no puede reconectar, lo vuelve a intentar al pedir otra.
+OPCIONES_CONEXION = {
+    "autocommit": True,
+    "prepare_threshold": None,  # compatible con el pooler de Neon
+    "connect_timeout": 10,
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+}
+
+
 def _empresa_de_fila(fila) -> dict:
     id_, slug, nombre, estado, creada, actualizada, datos = fila
     empresa = dict(datos or {})
@@ -224,12 +245,12 @@ class AlmacenPostgres:
         if pool is None:
             from psycopg_pool import ConnectionPool
 
-            # check: prueba la conexion antes de usarla (Neon corta las inactivas).
-            # prepare_threshold=None: compatible con el pooler de Neon.
+            # check: prueba cada conexión antes de usarla (Neon corta las inactivas).
             pool = ConnectionPool(
                 url, min_size=1, max_size=4, timeout=15,
+                max_idle=60, max_lifetime=30 * 60, reconnect_timeout=60,
                 check=ConnectionPool.check_connection,
-                kwargs={"autocommit": True, "prepare_threshold": None},
+                kwargs=OPCIONES_CONEXION,
                 open=True,
             )
         self._pool = pool
@@ -259,17 +280,33 @@ class AlmacenPostgres:
     def cerrar(self) -> None:
         self._pool.close()
 
+    def _con(self, accion):
+        """Corre `accion(conexion)`. Si la conexión se cortó a mitad de camino, reintenta
+        una vez con otra; si la base no responde, avisa con BaseDeDatosNoDisponible."""
+        from psycopg import OperationalError
+        from psycopg_pool import PoolTimeout
+
+        for intento in (1, 2):
+            try:
+                with self._pool.connection() as con:
+                    return accion(con)
+            except PoolTimeout:
+                log.error("La base no entregó una conexión a tiempo (PoolTimeout)")
+                raise BaseDeDatosNoDisponible("La base de datos no respondió a tiempo.") from None
+            except OperationalError:
+                if intento == 2:
+                    log.exception("La base cortó la conexión dos veces seguidas")
+                    raise BaseDeDatosNoDisponible("La base de datos cortó la conexión.") from None
+                log.warning("La base cortó una conexión; se reintenta con otra")
+
     def _uno(self, sql, params=()):
-        with self._pool.connection() as con:
-            return con.execute(sql, params).fetchone()
+        return self._con(lambda con: con.execute(sql, params).fetchone())
 
     def _todos(self, sql, params=()):
-        with self._pool.connection() as con:
-            return con.execute(sql, params).fetchall()
+        return self._con(lambda con: con.execute(sql, params).fetchall())
 
     def _ejecutar(self, sql, params=()):
-        with self._pool.connection() as con:
-            con.execute(sql, params)
+        self._con(lambda con: con.execute(sql, params))
 
     # ------------------------------------------------ empresas
     _SELECT_EMPRESA = "SELECT id, slug, nombre, estado, creada, actualizada, datos FROM empresas"

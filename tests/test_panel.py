@@ -147,3 +147,22 @@ def test_RF17_el_detalle_muestra_cuantos_dias_de_credito_quedan(admin, empresa, 
     assert re.search(r'class="cifra">49<small>días', html)  # (5 - 0.10) / 0.10 = 49
     lista = web.get("/panel/").get_data(as_text=True)
     assert "<strong>49</strong><span>días de crédito</span>" in lista
+
+
+def test_RF11_si_la_base_no_responde_el_panel_lo_explica_y_meta_reintenta(admin, almacen, empresa, firmar, payload, monkeypatch):
+    # Dada una base que no responde
+    from bot.almacen import BaseDeDatosNoDisponible
+
+    def sin_base(*args, **kwargs):
+        raise BaseDeDatosNoDisponible("La base de datos no respondió a tiempo.")
+
+    web, _ = admin
+    monkeypatch.setattr(almacen, "empresas", sin_base)
+    monkeypatch.setattr(almacen, "empresa_por_slug", sin_base)
+    # Cuando se abre el panel y cuando llega un aviso de Meta
+    panel = web.get("/panel/")
+    cuerpo, firma = firmar(payload())
+    aviso = web.post(f"/webhook/{empresa['slug']}", data=cuerpo, headers={"X-Hub-Signature-256": firma, "Content-Type": "application/json"})
+    # Entonces el panel explica qué pasa (503, no un 500) y Meta recibe 503 para reintentar después
+    assert panel.status_code == 503 and "La base de datos no respondió" in panel.get_data(as_text=True)
+    assert aviso.status_code == 503 and "error" in aviso.get_json()

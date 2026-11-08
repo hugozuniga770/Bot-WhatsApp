@@ -47,6 +47,30 @@ function asistente(form) {
   let actual = 0;
   let sondeo = null;
 
+  // Borrador: guarda en este navegador lo escrito (nunca las llaves) por si la página falla.
+  const clave = "borrador:" + location.pathname;
+  const campos = () => [...form.querySelectorAll("input[name], textarea[name]")]
+    .filter((c) => c.type !== "password" && c.type !== "hidden" && !c.readOnly);
+  try {
+    const guardado = JSON.parse(sessionStorage.getItem(clave) || "{}");
+    campos().forEach((c) => {
+      if (!(c.name in guardado)) return;
+      if (c.type === "radio") c.checked = c.value === guardado[c.name];
+      else if (!c.value) c.value = guardado[c.name];
+    });
+  } catch { /* sin borrador */ }
+  form.addEventListener("input", () => {
+    const datos = {};
+    campos().forEach((c) => {
+      if (c.type === "radio") { if (c.checked) datos[c.name] = c.value; }
+      else if (c.value) datos[c.name] = c.value;
+    });
+    try { sessionStorage.setItem(clave, JSON.stringify(datos)); } catch { /* sin espacio */ }
+  });
+  form.addEventListener("submit", () => {
+    try { sessionStorage.removeItem(clave); } catch { /* nada */ }
+  });
+
   // Si el servidor marcó errores, abrir el primer paso que tenga uno
   const conError = pasos.findIndex((p) => p.querySelector(".con-error"));
   if (conError >= 0) actual = conError;

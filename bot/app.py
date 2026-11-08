@@ -13,6 +13,7 @@ from flask import Blueprint, Flask, abort, current_app, redirect, request, url_f
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import reglas
+from .almacen import BaseDeDatosNoDisponible
 from .cifrado import Cifrador, ClaveIncorrecta
 from .config import cargar
 
@@ -148,6 +149,16 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
     app.register_blueprint(panel)
     app.register_blueprint(alta)
     registrar_filtros(app)
+
+    @app.errorhandler(BaseDeDatosNoDisponible)
+    def base_no_disponible(error):
+        # 503 (y no 500): Meta reintenta los avisos más tarde, y en el panel se explica qué pasó.
+        log.error("Base de datos no disponible en %s %s", request.method, request.path)
+        if request.path.startswith("/webhook") or request.is_json or "/probar/" in request.path or request.path.endswith("/webhook"):
+            return {"error": "La base de datos no respondió. Vuelve a intentar en un minuto."}, 503
+        from flask import render_template
+        return render_template("aviso.html", titulo="La base de datos no respondió",
+                               texto="Puede pasar si estuvo un rato sin uso y está despertando. Espera un minuto y vuelve a cargar la página. Lo que escribiste en el formulario se guarda en este navegador (sin las llaves)."), 503
 
     @app.after_request
     def cabeceras(respuesta):
