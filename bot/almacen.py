@@ -89,24 +89,97 @@ CREATE INDEX IF NOT EXISTS eventos_por_empresa ON eventos (empresa_id, id DESC);
 
 
 class BaseDeDatosNoDisponible(Exception):
-    """La base no respondió a tiempo (por ejemplo, Neon despertando o caído)."""
+    """La base no respondió (por ejemplo, Neon caído o sin red)."""
 
 
-# Parámetros del pool para Neon (D-22):
-# - connect_timeout: un intento de conexión nunca espera más de 10 s (sin esto, uno
-#   colgado deja al pool sin conexiones y todas las páginas fallan a los 15 s).
+# Opciones de cada conexión (D-22):
+# - connect_timeout: un intento nunca espera más de 15 s (Neon dormido despierta en pocos segundos).
 # - keepalives: detectan rápido una conexión que Neon cortó.
-# - max_idle: una conexión sin usar se cierra al minuto, antes de que Neon la corte.
-# - reconnect_timeout: si no puede reconectar, lo vuelve a intentar al pedir otra.
 OPCIONES_CONEXION = {
     "autocommit": True,
     "prepare_threshold": None,  # compatible con el pooler de Neon
-    "connect_timeout": 10,
+    "connect_timeout": 15,
     "keepalives": 1,
     "keepalives_idle": 30,
     "keepalives_interval": 10,
     "keepalives_count": 3,
 }
+
+
+class PoolSimple:
+    """Guarda unas pocas conexiones libres para reutilizarlas.
+
+    Reemplaza al pool de la libreria psycopg-pool (v2.3, D-22): aquel abria las
+    conexiones en hilos de fondo y, cuando Neon dormia la base, se quedaba sin
+    reintentar y la base nunca despertaba. Aqui, si no hay una conexion libre y sana,
+    se abre una en el momento, en el mismo pedido: ese intento llega a Neon y lo despierta.
+    """
+
+    def __init__(self, url: str, opciones: dict | None = None, max_libres: int = 4,
+                 vida_libre: float = 240.0, conectar=None, reloj=None):
+        import time
+
+        import psycopg
+
+        self._url = url
+        self._opciones = dict(OPCIONES_CONEXION if opciones is None else opciones)
+        self._max_libres = max_libres
+        # Neon duerme la base a los 5 min sin consultas y corta las conexiones:
+        # una conexion que estuvo libre mas de 4 min ya no se reutiliza.
+        self._vida_libre = vida_libre
+        self._conectar = conectar or psycopg.connect
+        self._reloj = reloj or time.monotonic
+        self._libres: list[tuple] = []
+        self._lock = threading.Lock()
+
+    def _tomar(self):
+        ahora = self._reloj()
+        while True:
+            with self._lock:
+                if not self._libres:
+                    break
+                con, desde = self._libres.pop()
+            if ahora - desde < self._vida_libre and not con.closed:
+                return con
+            self._cerrar(con)
+        return self._conectar(self._url, **self._opciones)
+
+    def _devolver(self, con) -> None:
+        if con.closed or getattr(con, "broken", False):
+            return
+        with self._lock:
+            if len(self._libres) < self._max_libres:
+                self._libres.append((con, self._reloj()))
+                return
+        self._cerrar(con)
+
+    @staticmethod
+    def _cerrar(con) -> None:
+        try:
+            con.close()
+        except Exception:
+            pass
+
+    def connection(self):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def usar():
+            con = self._tomar()
+            try:
+                yield con
+            except BaseException:
+                self._cerrar(con)  # estado desconocido: no se reutiliza
+                raise
+            self._devolver(con)
+
+        return usar()
+
+    def close(self) -> None:
+        with self._lock:
+            libres, self._libres = self._libres, []
+        for con, _ in libres:
+            self._cerrar(con)
 
 
 def _empresa_de_fila(fila) -> dict:
@@ -178,6 +251,9 @@ class AlmacenMemoria:
             self._invitaciones[token_hash]["usada"] = ahora
 
     # ------------------------------------------------ conversacion
+    def ping(self) -> bool:
+        return True
+
     def es_nuevo(self, empresa_id: int, mensaje_id: str, ahora: datetime) -> bool:
         """True la primera vez que se ve un mensaje; False si Meta lo reenvia."""
         with self._lock:
@@ -243,22 +319,13 @@ class AlmacenMemoria:
 class AlmacenPostgres:
     def __init__(self, url: str, max_leidos: int = 100, pool=None):
         if pool is None:
-            from psycopg_pool import ConnectionPool
-
-            # check: prueba cada conexión antes de usarla (Neon corta las inactivas).
-            pool = ConnectionPool(
-                url, min_size=1, max_size=4, timeout=15,
-                max_idle=60, max_lifetime=30 * 60, reconnect_timeout=60,
-                check=ConnectionPool.check_connection,
-                kwargs=OPCIONES_CONEXION,
-                open=True,
-            )
+            pool = PoolSimple(url)
         self._pool = pool
         self._max = max_leidos
         try:
             self._preparar()
         except Exception:
-            self._pool.close()  # sin esto, el proceso queda colgado esperando al pool
+            self._pool.close()
             raise
 
     def _preparar(self) -> None:
@@ -281,23 +348,23 @@ class AlmacenPostgres:
         self._pool.close()
 
     def _con(self, accion):
-        """Corre `accion(conexion)`. Si la conexión se cortó a mitad de camino, reintenta
-        una vez con otra; si la base no responde, avisa con BaseDeDatosNoDisponible."""
+        """Corre `accion(conexion)`. Si la conexión falla (cortada o sin poder conectar),
+        reintenta una vez con una nueva; si vuelve a fallar, avisa con BaseDeDatosNoDisponible."""
         from psycopg import OperationalError
-        from psycopg_pool import PoolTimeout
 
         for intento in (1, 2):
             try:
                 with self._pool.connection() as con:
                     return accion(con)
-            except PoolTimeout:
-                log.error("La base no entregó una conexión a tiempo (PoolTimeout)")
-                raise BaseDeDatosNoDisponible("La base de datos no respondió a tiempo.") from None
-            except OperationalError:
+            except OperationalError as e:
                 if intento == 2:
-                    log.exception("La base cortó la conexión dos veces seguidas")
-                    raise BaseDeDatosNoDisponible("La base de datos cortó la conexión.") from None
-                log.warning("La base cortó una conexión; se reintenta con otra")
+                    log.error("La base no respondió dos veces seguidas: %s", str(e).strip()[:200])
+                    raise BaseDeDatosNoDisponible("La base de datos no respondió.") from None
+                log.warning("Falló una conexión a la base (%s); se reintenta con otra", str(e).strip()[:200])
+
+    def ping(self) -> bool:
+        """Una consulta mínima. Si Neon dormía, esto lo despierta."""
+        return self._uno("SELECT 1") == (1,)
 
     def _uno(self, sql, params=()):
         return self._con(lambda con: con.execute(sql, params).fetchone())

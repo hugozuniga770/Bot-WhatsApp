@@ -119,6 +119,6 @@ Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso act
 | "no está en la lista de destinatarios" | Número de prueba de Meta | Agrega el celular en Configuración de la API |
 | Claude "no tiene créditos" | Saldo en cero | Carga en platform.claude.com y actualiza el saldo en el panel |
 | El primer mensaje tarda ~1 min | Render gratis se había dormido | Esperado (D-02) |
-| "La base de datos no respondió" (503) | Neon despertando o sin conexión | Espera un minuto y recarga. El borrador del formulario queda guardado en el navegador, pero las llaves hay que volver a pegarlas. Si se repite, busca en los logs de Render `error connecting in 'pool-1'`: dice el motivo |
+| "La base de datos no respondió" | Neon caído o sin red (si solo dormía, el bot lo despierta solo) | El formulario no se envía y conserva tus llaves: espera un minuto y vuelve a tocar el botón. `https://<tu-servicio>.onrender.com/salud/base` debe decir `ok`. Si se repite, busca en los logs de Render `Falló una conexión a la base`: dice el motivo |
 | En Actions aparece "pages-build-deployment" | GitHub Pages quedó activado en el repositorio | No hace falta para el bot: GitHub → Settings → Pages → desactivarlo |
 | Render no despliega tras un push | El CI falló (`checksPass`, D-09) | Mira Actions |

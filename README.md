@@ -1,9 +1,9 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.2
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.3
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
-- Estado al 08/11/2026: v2.1 en línea en Render y CI en verde (72 pruebas). La v2.2 hace que el bot se recupere solo cuando Neon corta o no entrega conexiones (el PoolTimeout del 08/11), fija Python 3.13 en Render y guarda un borrador del formulario en el navegador: 75 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.2 y terminar de cargar la primera empresa.
+- Estado al 08/11/2026: v2.1 en línea en Render y CI en verde (72 pruebas). La v2.3 reemplaza el pool de conexiones por uno propio, que abre la conexión en el momento y así despierta a Neon (era la causa del PoolTimeout del 08/11). Además, el formulario no se envía si la base no responde, para no perder las llaves: 78 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.3 y terminar de cargar la primera empresa.
 
 ## 1. Qué hace
 
@@ -98,8 +98,8 @@ Para que Meta llegue a tu PC mientras pruebas: `cloudflared tunnel --url http://
 python -m pytest -v
 ```
 
-- **En tu PC:** 65 passed y 10 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
-- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 75. El CI falla si alguna se salta.
+- **En tu PC:** 68 passed y 10 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
+- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 78. El CI falla si alguna se salta.
 
 Ninguna prueba usa la red: Meta, Claude y las verificaciones se reemplazan por dobles. [docs/pruebas.md](docs/pruebas.md) relaciona cada test con su requisito.
 
@@ -134,7 +134,7 @@ bot/
   formato.py        dinero, fechas y tiempos en las pantallas
   templates/        pantallas (Jinja)
   static/           estilos y JavaScript
-tests/              75 tests y conftest.py con los dobles
+tests/              78 tests y conftest.py con los dobles
 docs/               arquitectura, despliegue, decisiones, pruebas, cambios, glosario y capturas
 instrucciones.md    plantilla común del manual (vale para todas las empresas)
 render.yaml         cómo Render crea y arranca el servicio

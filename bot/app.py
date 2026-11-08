@@ -90,6 +90,13 @@ def salud():
     return "ok", 200
 
 
+@webhook.get("/salud/base")
+def salud_base():
+    """Comprueba (y despierta) la base. El formulario la llama antes de guardar."""
+    ctx().almacen.ping()
+    return {"ok": True}, 200
+
+
 @webhook.get("/")
 def raiz():
     return redirect(url_for("panel.inicio"))
@@ -154,7 +161,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
     def base_no_disponible(error):
         # 503 (y no 500): Meta reintenta los avisos más tarde, y en el panel se explica qué pasó.
         log.error("Base de datos no disponible en %s %s", request.method, request.path)
-        if request.path.startswith("/webhook") or request.is_json or "/probar/" in request.path or request.path.endswith("/webhook"):
+        if request.path.startswith(("/webhook", "/salud")) or request.is_json or "/probar/" in request.path or request.path.endswith("/webhook"):
             return {"error": "La base de datos no respondió. Vuelve a intentar en un minuto."}, 503
         from flask import render_template
         return render_template("aviso.html", titulo="La base de datos no respondió",

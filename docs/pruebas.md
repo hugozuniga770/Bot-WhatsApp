@@ -16,17 +16,19 @@ Los tests de `test_verificaciones.py` imitan las respuestas reales de Claude y d
 
 Los tests del almacén (`test_almacen.py`) son un **contrato** (D-12): cada uno corre con `AlmacenMemoria` y con `AlmacenPostgres`. Los de Postgres necesitan `TEST_DATABASE_URL`:
 
-- **En tu PC**, sin esa variable, salen **65 passed, 10 skipped**.
-- **En el CI**, un PostgreSQL 17 temporal; salen **75 passed**, y el CI falla si alguno se salta.
+- **En tu PC**, sin esa variable, salen **68 passed, 10 skipped**.
+- **En el CI**, un PostgreSQL 17 temporal; salen **78 passed**, y el CI falla si alguno se salta.
 - **Para correrlos en tu PC**, usa una base **de prueba**: los tests vacían las tablas. **Nunca la de producción.**
 
 ## 2. Estado
 
 | Corrida | Fecha | Resultado |
 |---|---|---|
+| v2.3 · entorno de armado, sin base | 08/11/2026 | **68 passed, 10 skipped** |
+| v2.3 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **78 passed**, 0 saltadas |
+| v2.3 · GitHub Actions | — | **Pendiente** |
 | v2.2 · entorno de armado, sin base | 08/11/2026 | **65 passed, 10 skipped** |
 | v2.2 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **75 passed**, 0 saltadas |
-| v2.2 · GitHub Actions | — | **Pendiente** |
 | v2.1 · GitHub Actions | 08/11/2026 | **72 passed** (run #3, commit 4d9219a) |
 | v2.1 · entorno de armado, sin base | 08/11/2026 | **63 passed, 9 skipped** |
 | v2.0 · GitHub Actions (Python 3.13, PostgreSQL 17) | 08/11/2026 | **69 passed**, 0 saltadas (run #2, commit 6bdc7ec) |
@@ -53,7 +55,19 @@ Se arrancó el servicio con gunicorn, PostgreSQL 16 y solo las variables obligat
 
 **La consola del navegador no tuvo errores.** Si la base no responde al arrancar, el servicio se detiene en vez de quedar a medias. En la v1.x también se probó cortar a mano las conexiones de la base: el pool reconecta solo.
 
-## 3b. Base que se cae y vuelve (v2.2, 08/11/2026)
+## 3c. Guardar con la base caída (v2.3, 08/11/2026)
+
+Servicio en gunicorn con PostgreSQL 16 y navegador Chromium de celular:
+
+| Momento | Resultado |
+|---|---|
+| Formulario abierto, llave pegada, base **apagada**, "Guardar cambios" | Aviso a los 0,1 s: "La base de datos no respondió, así que todavía no se guardó nada…". La página sigue siendo el formulario y la llave sigue pegada |
+| Base **prendida**, "Guardar cambios" otra vez | Guardado al primer intento ("Cambios guardados") y la llave aparece enmascarada en el detalle |
+| Conexiones cortadas por la base (como Neon al dormirse), luego `/salud/base` | 200: la consulta se repitió con una conexión nueva |
+
+La consola del navegador no tuvo errores.
+
+## 3b. Base que se cae y vuelve (v2.2, 08/11/2026; con psycopg-pool, reemplazado en v2.3)
 
 Servicio en gunicorn con PostgreSQL 16:
 
@@ -91,7 +105,10 @@ Requisitos cubiertos: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF
 | BOT-RF-10 | `test_RF10_contrasena_corta_no_se_acepta` | `test_config.py` | Pasa |
 | BOT-RF-10 | `test_RF10_en_render_usa_su_url_y_cookies_seguras` | `test_config.py` | Pasa |
 | BOT-RF-11 | `test_RF11_si_la_base_corta_las_conexiones_el_almacen_sigue_funcionando` (solo postgres) | `test_almacen.py` | Pasa |
-| BOT-RF-11 | `test_RF11_si_la_base_no_responde_se_avisa_claro_y_un_corte_se_reintenta` | `test_almacen.py` | Pasa |
+| BOT-RF-11 | `test_RF11_una_conexion_libre_se_reutiliza_y_una_vieja_se_reemplaza` | `test_almacen.py` | Pasa |
+| BOT-RF-11 | `test_RF11_si_se_corta_una_conexion_se_reintenta_con_otra` | `test_almacen.py` | Pasa |
+| BOT-RF-11 | `test_RF11_si_la_base_no_responde_dos_veces_se_avisa_claro` | `test_almacen.py` | Pasa |
+| BOT-RF-11 | `test_RF11_salud_base_responde_si_la_base_funciona_y_503_si_no` | `test_panel.py` | Pasa |
 | BOT-RF-11 | `test_RF11_si_la_base_no_responde_el_panel_lo_explica_y_meta_reintenta` | `test_panel.py` | Pasa |
 | BOT-RF-11 | `test_RF11_el_estado_sobrevive_a_un_reinicio` (solo postgres) | `test_almacen.py` | Pasa |
 | BOT-RF-11 | `test_RF11_el_historial_devuelve_los_ultimos_en_orden` [memoria, postgres] | `test_almacen.py` | Pasa |

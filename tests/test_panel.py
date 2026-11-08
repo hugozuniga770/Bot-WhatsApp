@@ -166,3 +166,19 @@ def test_RF11_si_la_base_no_responde_el_panel_lo_explica_y_meta_reintenta(admin,
     # Entonces el panel explica qué pasa (503, no un 500) y Meta recibe 503 para reintentar después
     assert panel.status_code == 503 and "La base de datos no respondió" in panel.get_data(as_text=True)
     assert aviso.status_code == 503 and "error" in aviso.get_json()
+
+
+def test_RF11_salud_base_responde_si_la_base_funciona_y_503_si_no(web, almacen, monkeypatch):
+    from bot.almacen import BaseDeDatosNoDisponible
+
+    # Dada la base funcionando
+    assert web.get("/salud/base").get_json() == {"ok": True}
+
+    # Dada una base que no responde
+    def sin_base():
+        raise BaseDeDatosNoDisponible("La base de datos no respondió.")
+
+    monkeypatch.setattr(almacen, "ping", sin_base)
+    # Entonces responde 503 en JSON, y el formulario sabe que no debe enviar
+    r = web.get("/salud/base")
+    assert r.status_code == 503 and "error" in r.get_json()

@@ -131,43 +131,82 @@ def test_RF11_si_la_base_corta_las_conexiones_el_almacen_sigue_funcionando(url_p
     almacen.cerrar()
 
 
-def test_RF11_si_la_base_no_responde_se_avisa_claro_y_un_corte_se_reintenta():
-    from contextlib import contextmanager
+class ConexionFalsa:
+    """Imita una conexión de psycopg: anota consultas y puede fallar."""
 
+    def __init__(self, n, fallas=0):
+        self.n, self.closed, self.broken, self.fallas = n, False, False, fallas
+
+    def execute(self, sql, params=()):
+        from psycopg import OperationalError
+        if self.fallas:
+            self.fallas -= 1
+            self.closed = True
+            raise OperationalError("server closed the connection unexpectedly")
+        return self
+
+    def fetchone(self):
+        return (1,)
+
+    def close(self):
+        self.closed = True
+
+
+def _pool_falso(fallas_por_conexion=(), conectar_falla=0):
+    """PoolSimple con conexiones falsas y un reloj que maneja el test."""
     from psycopg import OperationalError
-    from psycopg_pool import PoolTimeout
 
+    from bot.almacen import PoolSimple
+
+    estado = {"abiertas": [], "t": 0.0, "conectar_falla": conectar_falla}
+    fallas = list(fallas_por_conexion)
+
+    def conectar(url, **opciones):
+        if estado["conectar_falla"]:
+            estado["conectar_falla"] -= 1
+            raise OperationalError("connection timeout expired")
+        con = ConexionFalsa(len(estado["abiertas"]) + 1, fallas.pop(0) if fallas else 0)
+        estado["abiertas"].append(con)
+        return con
+
+    pool = PoolSimple("postgresql://falsa", conectar=conectar, reloj=lambda: estado["t"], vida_libre=240)
+    return pool, estado
+
+
+def _almacen_con(pool):
+    a = object.__new__(AlmacenPostgres)  # sin conectarse a nada
+    a._pool, a._max = pool, 100
+    return a
+
+
+def test_RF11_una_conexion_libre_se_reutiliza_y_una_vieja_se_reemplaza():
+    pool, estado = _pool_falso()
+    almacen = _almacen_con(pool)
+    # Dos consultas seguidas usan la misma conexión
+    almacen.ping(); almacen.ping()
+    assert len(estado["abiertas"]) == 1
+    # Después de 5 minutos sin uso (Neon ya la habría cortado) se abre una nueva en el momento
+    estado["t"] += 300
+    almacen.ping()
+    assert len(estado["abiertas"]) == 2 and estado["abiertas"][0].closed
+
+
+def test_RF11_si_se_corta_una_conexion_se_reintenta_con_otra():
+    # Dada una conexión que Neon cortó (falla al usarla)
+    pool, estado = _pool_falso(fallas_por_conexion=[1])
+    # Entonces la consulta se repite con una conexión nueva y funciona
+    assert _almacen_con(pool).ping() is True
+    assert len(estado["abiertas"]) == 2 and estado["abiertas"][0].closed
+
+
+def test_RF11_si_la_base_no_responde_dos_veces_se_avisa_claro():
     from bot.almacen import BaseDeDatosNoDisponible
 
-    class PoolFalso:
-        def __init__(self, fallas):
-            self.fallas, self.usos = list(fallas), 0
-
-        @contextmanager
-        def connection(self):
-            self.usos += 1
-            falla = self.fallas.pop(0) if self.fallas else None
-            if falla is PoolTimeout:
-                raise PoolTimeout("sin conexiones")
-            yield self
-
-        def execute(self, sql, params=()):
-            if self.fallas and self.fallas[0] is OperationalError:
-                self.fallas.pop(0)
-                raise OperationalError("server closed the connection unexpectedly")
-            return self
-
-        def fetchone(self):
-            return ("ok",)
-
-    def almacen_con(pool):
-        a = object.__new__(AlmacenPostgres)  # sin conectarse a nada
-        a._pool, a._max = pool, 100
-        return a
-
-    # Dado un corte a mitad de una consulta: se reintenta una vez y funciona
-    pool = PoolFalso([None, OperationalError])
-    assert almacen_con(pool)._uno("SELECT 1") == ("ok",) and pool.usos == 2
-    # Dada una base que no entrega conexiones: se avisa con un error propio y claro
-    with pytest.raises(BaseDeDatosNoDisponible, match="no respondió a tiempo"):
-        almacen_con(PoolFalso([PoolTimeout]))._uno("SELECT 1")
+    # Dada una base que no acepta conexiones (dos intentos fallidos)
+    pool, _ = _pool_falso(conectar_falla=2)
+    # Entonces se avisa con un error propio, no con un error interno
+    with pytest.raises(BaseDeDatosNoDisponible, match="no respondió"):
+        _almacen_con(pool).ping()
+    # Y si solo falla el primer intento (Neon despertando), el segundo funciona
+    pool, _ = _pool_falso(conectar_falla=1)
+    assert _almacen_con(pool).ping() is True

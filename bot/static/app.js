@@ -67,8 +67,38 @@ function asistente(form) {
     });
     try { sessionStorage.setItem(clave, JSON.stringify(datos)); } catch { /* sin espacio */ }
   });
-  form.addEventListener("submit", () => {
+  // Antes de guardar, comprueba que la base responda (y la despierta si dormía).
+  // Si no responde, NO envía: así no se pierden las llaves pegadas en el formulario.
+  form.addEventListener("submit", async (e) => {
+    if (form.dataset.baseLista === "1") return;
+    e.preventDefault();
+    const boton = e.submitter || form.querySelector("button[type=submit]");
+    const texto = boton?.textContent;
+    if (boton) { boton.disabled = true; boton.textContent = "Comprobando la conexión…"; }
+    form.querySelector(".aviso.js-base")?.remove();
+    let lista = false;
+    for (let intento = 0; intento < 2 && !lista; intento++) {
+      try {
+        const control = new AbortController();
+        const espera = setTimeout(() => control.abort(), 40000);
+        const r = await fetch("/salud/base", { signal: control.signal, headers: { Accept: "application/json" } });
+        clearTimeout(espera);
+        lista = r.ok;
+      } catch { /* se reintenta */ }
+    }
+    if (boton) { boton.disabled = false; boton.textContent = texto; }
+    if (!lista) {
+      const aviso = document.createElement("div");
+      aviso.className = "aviso error js-base";
+      aviso.setAttribute("role", "alert");
+      aviso.textContent = "La base de datos no respondió, así que todavía no se guardó nada. Tus datos y llaves siguen aquí: espera un minuto y vuelve a tocar el botón.";
+      (boton?.closest(".paso") || form).prepend(aviso);
+      aviso.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     try { sessionStorage.removeItem(clave); } catch { /* nada */ }
+    form.dataset.baseLista = "1";
+    form.requestSubmit(boton);
   });
 
   // Si el servidor marcó errores, abrir el primer paso que tenga uno

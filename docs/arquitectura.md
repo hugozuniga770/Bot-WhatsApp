@@ -76,6 +76,12 @@ sequenceDiagram
 
 Las tablas se crean solas al arrancar. Si la base tiene tablas de la v1.x, el servicio se detiene con un mensaje claro en vez de mezclarlas.
 
+**Conexiones (D-22):** `PoolSimple` guarda hasta 4 conexiones libres.
+- Si no hay una sana, abre una en el mismo pedido: eso despierta a Neon si estaba dormido.
+- Las conexiones libres de más de 4 minutos se descartan, porque Neon duerme a los 5.
+- Si una consulta falla, se repite una vez con otra conexión; si vuelve a fallar, se responde 503 con una explicación (Meta reintenta).
+- `/salud/base` comprueba la base, y el formulario la llama antes de enviar.
+
 | Tabla | Una fila por | Lo importante |
 |---|---|---|
 | `empresas` | Empresa | `slug` único, `estado`, y `datos` (JSON): dueño, info del negocio, ajustes, saldo, última verificación y llaves cifradas (`*_cif`) |
