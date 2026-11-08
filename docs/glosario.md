@@ -18,7 +18,8 @@ Para leer el código y los `docs/` sin perderse. Si algo de aquí contradice a o
 | **Créditos de uso** | Saldo prepagado en platform.claude.com. Vencen al año de la compra. |
 | **Manual** | Lo que Claude sabe y cómo habla: la plantilla común `instrucciones.md` más los datos de cada empresa. |
 | **Webhook** | Dirección (`/webhook/<slug>`) a la que Meta avisa cada mensaje de esa empresa. |
-| **Verify token** | Palabra al azar de cada empresa; Meta la manda para comprobar que el webhook es suyo. |
+| **Verify token** | Palabra al azar de cada empresa; Meta la manda para comprobar que el webhook es suyo. Se cambia en el panel, en Conexión (D-24). |
+| **Aviso de estado** | Lo que Meta manda al webhook sobre un mensaje del bot: enviado, entregado, leído o no entregado (`failed`). Solo los no entregados quedan en la Actividad (BOT-RF-09). |
 | **App ID / App Secret** | Identificador y clave de la app de Meta. Con el App Secret, Meta firma cada aviso. |
 | **Phone number ID** | Identificador del número en Meta. No es el número de teléfono. |
 | **Token de WhatsApp** | Permiso para enviar mensajes. El de Configuración de la API vence en unas 24 h; el de un usuario del sistema no vence. |
@@ -30,7 +31,7 @@ Para leer el código y los `docs/` sin perderse. Si algo de aquí contradice a o
 | **Números ignorados** | Familia, proveedores y otros números a los que el bot nunca responde (BOT-RF-19). |
 | **PostgreSQL / Neon** | Base de datos donde se guarda todo (D-03). Neon la da gratis y la duerme sin uso. |
 | **Pool de conexiones** | Conexiones a la base que el servicio reutiliza; prueba cada una antes de usarla. |
-| **CI** | GitHub Actions corre los 69 tests en cada push, con un PostgreSQL temporal. |
+| **CI** | GitHub Actions corre los 89 tests en cada push, con un PostgreSQL temporal. |
 | **Blueprint** | `render.yaml`: describe el servicio para que Render lo cree desde el repositorio. |
 | **Dormirse** | Render gratis apaga el servicio tras 15 min sin tráfico y lo prende con el siguiente (D-02). |
 | **Doble (de prueba)** | Objeto falso que reemplaza a Meta, Claude o el verificador en los tests. |

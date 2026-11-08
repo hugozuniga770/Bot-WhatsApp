@@ -40,6 +40,35 @@ def test_RF09_extrae_mensajes_e_ignora_estados_de_entrega(payload):
         ("wamid.1", "text", "Hola"), ("wamid.2", "image", "")]
 
 
+def test_RF09_los_avisos_de_falla_se_leen_con_su_motivo_y_los_demas_estados_no(payload):
+    # Dado un aviso de Meta con un mensaje "leído", uno "entregado" y uno que falló por la regla de las 24 h
+    datos = payload(estados=[
+        {"id": "wamid.A", "status": "read", "recipient_id": "59169246105"},
+        {"id": "wamid.B", "status": "delivered", "recipient_id": "59169246105"},
+        {"id": "wamid.C", "status": "failed", "recipient_id": "59169246105", "errors": [{
+            "code": 131047, "title": "Re-engagement message",
+            "error_data": {"details": "Message failed to send because more than 24 hours have passed"}}]},
+    ])
+    # Cuando se leen los avisos
+    fallas = reglas.extraer_fallas(datos)
+    # Entonces sale solo la falla, y el texto para el panel la explica en palabras simples sin el número completo
+    assert [(f.id, f.numero, f.codigo) for f in fallas] == [("wamid.C", "59169246105", 131047)]
+    texto = reglas.texto_de_falla(fallas[0])
+    assert texto.startswith("Meta no pudo entregar un mensaje a ...6105: pasaron más de 24 horas")
+    assert "(código 131047)" in texto and "69246105" not in texto
+    # Y no son mensajes de clientes
+    assert reglas.extraer_mensajes(datos) == []
+
+
+def test_RF09_una_falla_con_un_codigo_desconocido_muestra_lo_que_dice_meta():
+    # Dado un código que el bot no conoce, y otro aviso sin ningún detalle
+    raro = reglas.FallaDeEntrega("wamid.X", "59170000001", 999999, "Something unusual happened")
+    vacio = reglas.FallaDeEntrega("wamid.Y", "59170000001")
+    # Entonces se muestra el texto de Meta o, si no hay, que no dio el motivo
+    assert reglas.texto_de_falla(raro) == "Meta no pudo entregar un mensaje a ...0001: Something unusual happened (código 999999)."
+    assert reglas.texto_de_falla(vacio) == "Meta no pudo entregar un mensaje a ...0001: Meta no dio el motivo."
+
+
 def test_RF17_estima_saldo_y_dias_con_el_promedio_de_la_ultima_semana():
     # Dado USD 5 cargados hace 3 días y 1 millón de tokens de entrada por día con Haiku (USD 0.10/día)
     hoy = date(2026, 11, 7)

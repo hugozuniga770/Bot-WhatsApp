@@ -131,6 +131,42 @@ def test_RF16_el_mensaje_de_prueba_explica_la_regla_de_las_24_horas(admin, empre
     assert verificador.llamadas[-1] == ("prueba", DUENO)
 
 
+def test_RF16_si_meta_acepta_la_prueba_se_aclara_donde_ver_si_no_llego(admin, empresa, almacen):
+    # Dado que Meta acepta el mensaje de prueba (aceptarlo no es entregarlo)
+    web, csrf = admin
+    r = web.post(f"/panel/empresas/{empresa['id']}/prueba", data={"csrf": csrf}, follow_redirects=True)
+    # Entonces el panel no dice "enviado" a secas: dice que Meta lo aceptó y dónde ver el motivo si no llega
+    html = r.get_data(as_text=True)
+    assert "Meta aceptó el mensaje de prueba" in html and "en Actividad aparece el motivo" in html
+    assert almacen.eventos(empresa["id"])[0]["detalle"] == "Meta aceptó el mensaje de prueba para el dueño."
+
+
+# ------------------------------------------------------------------ BOT-RF-08 cambiar el token de verificación
+def test_RF08_el_admin_cambia_el_token_y_solo_el_nuevo_verifica(admin, empresa, almacen):
+    # Dada una empresa con su token de verificación
+    web, csrf = admin
+    viejo = empresa["verify_token"]
+    # Cuando el admin lo cambia desde el panel (sin CSRF no se puede)
+    assert web.post(f"/panel/empresas/{empresa['id']}/token-verificacion", data={}).status_code == 400
+    r = web.post(f"/panel/empresas/{empresa['id']}/token-verificacion", data={"csrf": csrf}, follow_redirects=True)
+    # Entonces hay un token nuevo, el panel lo muestra y la Actividad lo registra
+    nuevo = almacen.empresa(empresa["id"])["verify_token"]
+    assert nuevo != viejo and len(nuevo) >= 30
+    html = r.get_data(as_text=True)
+    assert f'value="{nuevo}"' in html and "Token cambiado" in html
+    assert almacen.eventos(empresa["id"])[0]["detalle"] == "Token de verificación cambiado."
+    # Y Meta solo puede verificar con el nuevo
+    consulta = {"hub.mode": "subscribe", "hub.challenge": "777"}
+    assert web.get(f"/webhook/{empresa['slug']}", query_string={**consulta, "hub.verify_token": viejo}).status_code == 403
+    assert web.get(f"/webhook/{empresa['slug']}", query_string={**consulta, "hub.verify_token": nuevo}).get_data(as_text=True) == "777"
+
+
+def test_RF08_cambiar_el_token_pide_la_contrasena_del_panel(web, empresa):
+    # Sin sesión de administrador no se puede cambiar
+    r = web.post(f"/panel/empresas/{empresa['id']}/token-verificacion", data={})
+    assert r.status_code in (302, 401, 403)
+
+
 # ------------------------------------------------------------------ BOT-RF-13 y 17 en el detalle
 def test_RF13_el_detalle_nunca_muestra_las_llaves_completas(admin, empresa, almacen, config, ahora):
     web, _ = admin

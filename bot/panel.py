@@ -162,8 +162,11 @@ def prueba(eid):
     envio = c.verificador.enviar_prueba(s["whatsapp_token"], empresa.get("phone_number_id", ""),
                                         empresa["dueno_numero"], MENSAJE_PRUEBA.format(nombre=empresa["nombre"]))
     if envio.ok:
-        c.almacen.registrar_evento(eid, "prueba", "Mensaje de prueba enviado al dueño.", c.ahora())
-        flash("Mensaje de prueba enviado. Revisa el WhatsApp del dueño.", "ok")
+        # Que Meta lo acepte no garantiza que llegue: si no lo entrega, avisa después por el
+        # webhook y el motivo queda en la Actividad (por ejemplo, la regla de las 24 horas).
+        c.almacen.registrar_evento(eid, "prueba", "Meta aceptó el mensaje de prueba para el dueño.", c.ahora())
+        flash("Meta aceptó el mensaje de prueba. Si en un minuto no llega al WhatsApp del dueño, "
+              "recarga esta página: en Actividad aparece el motivo.", "ok")
     else:
         explicacion = EXPLICACION_ENVIO.get(envio.codigo, f"Meta respondió: {envio.detalle or envio.codigo}")
         c.almacen.registrar_evento(eid, "error", f"No se pudo enviar la prueba (código {envio.codigo}).", c.ahora())
@@ -193,6 +196,20 @@ def cambiar_estado(eid):
     c.almacen.registrar_evento(eid, "estado", textos[nuevo], c.ahora())
     flash(textos[nuevo], "ok")
     return redirect(url_for(".detalle", eid=eid))
+
+
+@panel.post("/empresas/<int:eid>/token-verificacion")
+@requiere_admin
+def cambiar_token_verificacion(eid):
+    """Cambia el token de verificación del webhook (D-24). No corta nada: Meta sigue
+    mandando los mensajes, porque esos se firman con el App Secret y no con este token."""
+    c = ctx()
+    _empresa_o_404(eid)
+    c.almacen.actualizar_empresa(eid, {"verify_token": E.nuevo_token_verificacion()}, c.ahora())
+    c.almacen.registrar_evento(eid, "webhook", "Token de verificación cambiado.", c.ahora())
+    flash("Token cambiado. El bot sigue recibiendo mensajes igual. Si algún día vuelves a tocar "
+          "«Verificar y guardar» en Meta, pega antes este token nuevo.", "ok")
+    return redirect(url_for(".detalle", eid=eid) + "#conexion")
 
 
 @panel.post("/empresas/<int:eid>/saldo")

@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 08/11/2026 · Versión: v2.0
+- Fecha: 08/11/2026 · Versión: v2.5
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -16,17 +16,21 @@ Los tests de `test_verificaciones.py` imitan las respuestas reales de Claude y d
 
 Los tests del almacén (`test_almacen.py`) son un **contrato** (D-12): cada uno corre con `AlmacenMemoria` y con `AlmacenPostgres`. Los de Postgres necesitan `TEST_DATABASE_URL`:
 
-- **En tu PC**, sin esa variable, salen **71 passed, 11 skipped**.
-- **En el CI**, un PostgreSQL 17 temporal; salen **82 passed**, y el CI falla si alguno se salta.
+- **En tu PC**, sin esa variable, salen **78 passed, 11 skipped**.
+- **En el CI**, un PostgreSQL 17 temporal; salen **89 passed**, y el CI falla si alguno se salta.
 - **Para correrlos en tu PC**, usa una base **de prueba**: los tests vacían las tablas. **Nunca la de producción.**
 
 ## 2. Estado
 
 | Corrida | Fecha | Resultado |
 |---|---|---|
+| v2.5 · entorno de armado, sin base | 08/11/2026 | **78 passed, 11 skipped** |
+| v2.5 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **89 passed**, 0 saltadas |
+| v2.5 · GitHub Actions | — | **Pendiente** |
+| v2.4 · en vivo (Render + Meta + Claude) | 08/11/2026 | Hugo le escribió "Hola" al número de prueba (+1 555-046-3561) desde su celular y el bot respondió como Sentirse Única |
+| v2.4 · GitHub Actions | 08/11/2026 | **82 passed** (run #6, commit d369a84); Render Live con ese commit |
 | v2.4 · entorno de armado, sin base | 08/11/2026 | **71 passed, 11 skipped** |
 | v2.4 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **82 passed**, 0 saltadas |
-| v2.4 · GitHub Actions | — | **Pendiente** |
 | v2.3 · GitHub Actions | 08/11/2026 | **78 passed** (run #5, commit 31b1233); en Render, Sentirse Única guardada con Claude, número y token verificados |
 | v2.3 · entorno de armado, sin base | 08/11/2026 | **68 passed, 10 skipped** |
 | v2.3 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **78 passed**, 0 saltadas |
@@ -85,7 +89,7 @@ Un servidor que acepta la conexión y nunca contesta: con `connect_timeout`, el 
 
 ## 4. Requisito → test
 
-Requisitos cubiertos (más RF-20, agregado en v2.4): RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11, RF-12, RF-13, RF-14, RF-15, RF-16, RF-17, RF-18, RF-19.
+Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v2.5): RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11, RF-12, RF-13, RF-14, RF-15, RF-16, RF-17, RF-18, RF-19.
 
 | Requisito | Test | Archivo | Estado |
 |---|---|---|---|
@@ -101,9 +105,15 @@ Requisitos cubiertos (más RF-20, agregado en v2.4): RF-01, RF-02, RF-03, RF-04,
 | BOT-RF-07 | `test_RF07_firma_correcta_se_acepta_y_alterada_se_rechaza` | `test_reglas.py` | Pasa |
 | BOT-RF-07 | `test_RF07_sin_firma_o_con_el_secreto_de_otra_empresa_se_rechaza` | `test_webhook.py` | Pasa |
 | BOT-RF-07 | `test_RF07_webhook_firmado_con_el_secreto_de_la_empresa_se_atiende` | `test_webhook.py` | Pasa |
+| BOT-RF-08 | `test_RF08_cambiar_el_token_pide_la_contrasena_del_panel` | `test_panel.py` | Pasa |
+| BOT-RF-08 | `test_RF08_el_admin_cambia_el_token_y_solo_el_nuevo_verifica` | `test_panel.py` | Pasa |
 | BOT-RF-08 | `test_RF08_token_incorrecto_o_empresa_inexistente_se_rechaza` | `test_webhook.py` | Pasa |
 | BOT-RF-08 | `test_RF08_verificacion_con_el_token_de_la_empresa_devuelve_el_challenge` | `test_webhook.py` | Pasa |
 | BOT-RF-09 | `test_RF09_extrae_mensajes_e_ignora_estados_de_entrega` | `test_reglas.py` | Pasa |
+| BOT-RF-09 | `test_RF09_los_avisos_de_falla_se_leen_con_su_motivo_y_los_demas_estados_no` | `test_reglas.py` | Pasa |
+| BOT-RF-09 | `test_RF09_una_falla_con_un_codigo_desconocido_muestra_lo_que_dice_meta` | `test_reglas.py` | Pasa |
+| BOT-RF-09 | `test_RF09_un_mensaje_no_entregado_queda_en_la_actividad_una_sola_vez` | `test_servicios.py` | Pasa |
+| BOT-RF-09 | `test_RF09_meta_avisa_que_no_pudo_entregar_y_el_panel_lo_muestra` | `test_webhook.py` | Pasa |
 | BOT-RF-10 | `test_RF10_config_incompleta_avisa_que_variables_faltan` | `test_config.py` | Pasa |
 | BOT-RF-10 | `test_RF10_contrasena_corta_no_se_acepta` | `test_config.py` | Pasa |
 | BOT-RF-10 | `test_RF10_en_render_usa_su_url_y_cookies_seguras` | `test_config.py` | Pasa |
@@ -137,6 +147,7 @@ Requisitos cubiertos (más RF-20, agregado en v2.4): RF-01, RF-02, RF-03, RF-04,
 | BOT-RF-15 | `test_RF15_un_enlace_vencido_no_sirve` | `test_panel.py` | Pasa |
 | BOT-RF-16 | `test_RF16_actividad_y_eventos_quedan_registrados` [memoria, postgres] | `test_almacen.py` | Pasa |
 | BOT-RF-16 | `test_RF16_el_mensaje_de_prueba_explica_la_regla_de_las_24_horas` | `test_panel.py` | Pasa |
+| BOT-RF-16 | `test_RF16_si_meta_acepta_la_prueba_se_aclara_donde_ver_si_no_llego` | `test_panel.py` | Pasa |
 | BOT-RF-16 | `test_RF16_el_webhook_y_el_estado_general` | `test_verificaciones.py` | Pasa |
 | BOT-RF-16 | `test_RF16_en_el_enlace_se_puede_probar_la_llave_antes_de_enviar` | `test_panel.py` | Pasa |
 | BOT-RF-16 | `test_RF16_llave_de_claude_invalida_o_sin_creditos_se_explica` | `test_verificaciones.py` | Pasa |
@@ -172,4 +183,4 @@ Requisitos cubiertos (más RF-20, agregado en v2.4): RF-01, RF-02, RF-03, RF-04,
 - **La calidad de las respuestas de Claude:** depende del manual. Se revisa leyendo conversaciones reales en la prueba en vivo (paso 5).
 - **El JavaScript del formulario** (pasos, copiar, probar, estado del webhook): solo se probó en el recorrido de la sección 3, sin tests automáticos. Sin JavaScript, el formulario igual funciona.
 - **Dos mensajes del mismo cliente en el mismo instante:** hay un candado por chat, pero no hay test de concurrencia.
-- **El aviso al dueño fuera de la ventana de 24 h:** falla por regla de Meta (README, sección 9).
+- **El aviso al dueño fuera de la ventana de 24 h:** falla por regla de Meta (README, sección 9). Desde la v2.5, el motivo llega a la Actividad; se probó con el JSON que documenta Meta, no con un aviso real.

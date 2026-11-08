@@ -3,6 +3,7 @@
 Las dependencias externas (almacen, Meta, Claude, verificaciones, reloj) se
 pueden reemplazar al crear la app: asi los tests no tocan la red.
 """
+import hmac
 import logging
 import threading
 from dataclasses import dataclass
@@ -55,11 +56,29 @@ def _atender_seguro(contexto: Contexto, empresa_id: int, msg):
         log.exception("Error inesperado atendiendo un mensaje de la empresa %s", empresa_id)
 
 
+def _registrar_falla_segura(contexto: Contexto, empresa_id: int, falla):
+    try:
+        empresa = contexto.almacen.empresa(empresa_id)
+        resultado = contexto.servicios.registrar_falla(empresa, falla, contexto.ahora())
+        log.warning("[%s] Meta no pudo entregar un mensaje a %s (código %s): %s",
+                    empresa["slug"], reglas.ocultar_numero(falla.numero), falla.codigo, resultado)
+    except Exception:
+        log.exception("Error inesperado registrando un mensaje no entregado de la empresa %s", empresa_id)
+
+
+def _token_correcto(recibido: str | None, esperado: str | None) -> bool:
+    """Compara sin filtrar por el tiempo de respuesta cuántas letras coinciden."""
+    return bool(recibido and esperado) and hmac.compare_digest(recibido.encode(), esperado.encode())
+
+
 @webhook.get("/webhook/<slug>")
 def verificar(slug):
+    # Meta manda el token en la dirección (?hub.verify_token=...), y Render anota las
+    # direcciones en sus registros. Por eso el panel deja cambiarlo (D-24).
     c = ctx()
     empresa = c.almacen.empresa_por_slug(slug) or abort(404)
-    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == empresa.get("verify_token"):
+    if request.args.get("hub.mode") == "subscribe" and _token_correcto(request.args.get("hub.verify_token"),
+                                                                      empresa.get("verify_token")):
         c.almacen.marcar_actividad(empresa["id"], "webhook", c.ahora())
         c.almacen.registrar_evento(empresa["id"], "webhook", "Meta verificó el webhook.", c.ahora())
         return request.args.get("hub.challenge", ""), 200
@@ -80,8 +99,11 @@ def recibir(slug):
         log.warning("[%s] peticion con firma invalida; se ignora", slug)
         abort(403)
     c.almacen.marcar_actividad(empresa["id"], "webhook", c.ahora())
-    for msg in reglas.extraer_mensajes(request.get_json(silent=True)):
+    datos = request.get_json(silent=True)
+    for msg in reglas.extraer_mensajes(datos):
         c.ejecutar(_atender_seguro, c, empresa["id"], msg)
+    for falla in reglas.extraer_fallas(datos):
+        c.ejecutar(_registrar_falla_segura, c, empresa["id"], falla)
     return "ok", 200
 
 

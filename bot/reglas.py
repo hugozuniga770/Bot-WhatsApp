@@ -72,6 +72,62 @@ def extraer_mensajes(payload) -> list[MensajeEntrante]:
     return mensajes
 
 
+@dataclass(frozen=True)
+class FallaDeEntrega:
+    """Meta avisa que no pudo entregar un mensaje que mandó el bot (status "failed")."""
+    id: str
+    numero: str
+    codigo: int | None = None
+    detalle: str = ""
+
+
+# Códigos de error de la WhatsApp Cloud API, explicados para el panel.
+# Fuente: developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes (08/11/2026).
+MOTIVOS_DE_FALLA = {
+    131047: "pasaron más de 24 horas desde el último mensaje de esa persona, y WhatsApp no deja escribirle primero",
+    131026: "ese número no puede recibirlo (puede que no use WhatsApp o tenga una versión vieja)",
+    131030: "ese número no está en la lista de destinatarios de prueba de Meta",
+    131049: "Meta decidió no entregarlo para cuidar la experiencia de los usuarios",
+    131050: "esa persona pidió no recibir mensajes de marketing",
+    131056: "se mandaron demasiados mensajes seguidos a ese número; hay que esperar un rato",
+    130429: "se superó el límite de envíos de la cuenta",
+    131031: "la cuenta de WhatsApp Business está bloqueada",
+    131042: "hay un problema con el método de pago de la cuenta de Meta",
+    368: "la cuenta está bloqueada por un tiempo por no cumplir las políticas de WhatsApp",
+}
+
+
+def extraer_fallas(payload) -> list[FallaDeEntrega]:
+    """Saca del JSON de Meta los avisos de mensajes que no se pudieron entregar.
+
+    Los avisos de enviado, entregado y leído se ignoran (BOT-RF-09).
+    """
+    fallas = []
+    if not isinstance(payload, dict):
+        return fallas
+    for entrada in payload.get("entry") or []:
+        for cambio in entrada.get("changes") or []:
+            if cambio.get("field", "messages") != "messages":
+                continue
+            for estado in (cambio.get("value") or {}).get("statuses") or []:
+                if estado.get("status") != "failed" or not estado.get("id"):
+                    continue
+                error = (estado.get("errors") or [{}])[0] or {}
+                codigo = error.get("code")
+                detalle = ((error.get("error_data") or {}).get("details") or error.get("message")
+                           or error.get("title") or "")
+                fallas.append(FallaDeEntrega(estado["id"], str(estado.get("recipient_id") or ""),
+                                             codigo if isinstance(codigo, int) else None, str(detalle)[:200]))
+    return fallas
+
+
+def texto_de_falla(falla: FallaDeEntrega) -> str:
+    """El texto que queda en la Actividad del panel."""
+    motivo = MOTIVOS_DE_FALLA.get(falla.codigo) or falla.detalle or "Meta no dio el motivo"
+    codigo = f" (código {falla.codigo})" if falla.codigo else ""
+    return f"Meta no pudo entregar un mensaje a {ocultar_numero(falla.numero)}: {motivo}{codigo}."
+
+
 def firma_valida(cuerpo: bytes, cabecera: str | None, secreto: str) -> bool:
     """Comprueba que la peticion viene de Meta (cabecera X-Hub-Signature-256)."""
     if not secreto or not cabecera or not cabecera.startswith("sha256="):

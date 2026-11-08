@@ -61,6 +61,7 @@ Abre `https://<tu-servicio>.onrender.com/` en tu celular, entra con tu contrase�
    - **Llenarlo tú:** en el detalle de la empresa, toca **Editar datos y llaves**. Son los mismos pasos, más uno de ajustes.
 3. Los pasos 3 y 4 del formulario explican dónde sacar cada llave y tienen botones **Probar**. Para probar sin tocar el número real, usa el número de prueba que Meta da en **WhatsApp → Configuración de la API**, y agrega tu celular como destinatario de prueba.
 4. El paso 5 muestra la dirección del webhook y su token para pegarlos en Meta. Cuando Meta los verifica, ese paso cambia solo a **Conectado**. Después suscríbete a `messages`.
+5. Con el webhook ya conectado, en el detalle de la empresa → **Conexión → Cambiar el token de verificación**. Meta lo mandó dentro de la dirección y quedó en los registros de Render (D-24). El bot sigue recibiendo mensajes igual; solo si algún día vuelves a tocar **Verificar y guardar** en Meta, pega antes el token nuevo.
 
 **Comprobación:** al enviar, la empresa aparece **En prueba**. Las pruebas del formulario salieron en verde y el webhook dice **Conectado**.
 
@@ -72,7 +73,7 @@ Mientras la app está "sin publicar", Meta solo le manda al bot los avisos de pr
 2. En developers.facebook.com → tu app → **Configuración de la app → Básica**, completa:
    - la **URL de la política de privacidad**;
    - la **URL de instrucciones para eliminar los datos**;
-   - el **ícono de la app** (1024 × 1024, puede ser el logo del negocio);
+   - el **ícono de la app** (1024 × 1024, JPG o PNG, hasta 5 MB; el logo del negocio centrado sobre fondo blanco);
    - la **categoría** (por ejemplo, "Negocios y páginas" o "Mensajería").
 
    Luego toca **Guardar cambios**.
@@ -81,6 +82,16 @@ Mientras la app está "sin publicar", Meta solo le manda al bot los avisos de pr
 **Comprobación:** la app ya no dice "Sin publicar". Al escribirle al número desde tu celular, el panel muestra en **Actividad** el último mensaje de un cliente.
 
 Las páginas de privacidad y borrado se generan solas para cada empresa, con su nombre. Son un texto base: revísalas con el negocio.
+
+### Dónde va el logo del negocio
+
+| Dónde | Para qué | Tamaño |
+|---|---|---|
+| developers.facebook.com → la app → **Configuración de la app → Básica → Ícono de la app** | Lo pide Meta para publicar la app. Los clientes no lo ven | 1024 × 1024 |
+| business.facebook.com → **WhatsApp Manager → Números de teléfono** → el número → **Perfil** | La foto que ven los clientes en el chat con el bot | 640 × 640, con el logo dentro del círculo (WhatsApp la recorta redonda) |
+| App de WhatsApp Business del celular → **Herramientas para la empresa → Perfil de empresa** (en Android, desde el menú ⋮; en iPhone, desde Configuración) | La foto del número que atiende la dueña | La misma de 640 × 640 |
+
+El número de prueba de Meta no deja cambiar su nombre visible; la foto de perfil importa recién con el número real (paso 8).
 
 ## Paso 5. Prueba en vivo
 
@@ -95,7 +106,7 @@ Las páginas de privacidad y borrado se generan solas para cada empresa, con su 
 ## Paso 6. Verificar y activar
 
 1. Toca **Verificar todo**. Cada línea debe salir con ✓. Si algo sale en rojo, el texto dice qué arreglar.
-2. Toca **Enviar mensaje de prueba**. Llega al dueño si él le escribió al número en las últimas 24 h; si no, el panel lo explica.
+2. Toca **Enviar mensaje de prueba**. Llega al dueño si él le escribió al número en las últimas 24 h. Si Meta lo rechaza, el panel lo explica al instante; si lo acepta pero no lo entrega, el motivo aparece en **Actividad** unos segundos después.
 3. Escribe el saldo real de la cuenta de Claude en **Actualizar saldo**.
 4. Toca **Activar para todos**.
 
@@ -134,6 +145,7 @@ Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso act
 | Meta no acepta el webhook | Token de verificación distinto, o el servicio estaba dormido | Cópialo con el botón; abre `/salud` para despertarlo y reintenta |
 | Webhook en "Esperando a Meta…" | Falta tocar Verificar y guardar en Meta | Paso 5 del formulario |
 | La prueba dice "últimas 24 horas" | Regla de WhatsApp | El dueño le escribe primero al número del negocio |
+| "Meta aceptó el mensaje de prueba" pero no llega | Meta lo aceptó y después no lo pudo entregar | Recarga el detalle de la empresa: en **Actividad** está el motivo ("Meta no pudo entregar un mensaje a ...") |
 | "no está en la lista de destinatarios" | Número de prueba de Meta | Agrega el celular en Configuración de la API |
 | Claude "no tiene créditos" | Saldo en cero | Carga en platform.claude.com y actualiza el saldo en el panel |
 | El primer mensaje tarda ~1 min | Render gratis se había dormido | Esperado (D-02) |

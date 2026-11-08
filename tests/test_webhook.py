@@ -1,4 +1,4 @@
-"""Webhook de cada empresa (/webhook/<slug>). Requisitos BOT-RF-07, 08 y 12."""
+"""Webhook de cada empresa (/webhook/<slug>). Requisitos BOT-RF-07, 08, 09 y 12."""
 from bot.cifrado import Cifrador
 from bot.empresas import crear_empresa
 from conftest import CLIENTE, SECRETO_META
@@ -47,3 +47,17 @@ def test_RF07_sin_firma_o_con_el_secreto_de_otra_empresa_se_rechaza(web, empresa
     # Entonces ambos se rechazan y nadie recibe respuesta
     assert (sin_firma.status_code, cruzado.status_code) == (403, 403)
     assert whatsapp.enviados == []
+
+
+def test_RF09_meta_avisa_que_no_pudo_entregar_y_el_panel_lo_muestra(admin, empresa, almacen, config, payload, firmar, whatsapp, ahora):
+    # Dada una empresa con su App Secret, y Meta avisa que un mensaje del bot no se entregó
+    _con_secreto(almacen, empresa, config, ahora)
+    cuerpo, firma = firmar(payload(estados=[{"id": "wamid.9", "status": "failed", "recipient_id": "59169246105",
+                                             "errors": [{"code": 131030, "title": "Recipient not in allowed list"}]}]))
+    web, _ = admin
+    # Cuando llega el aviso firmado
+    r = web.post(f"/webhook/{empresa['slug']}", data=cuerpo, headers={"X-Hub-Signature-256": firma, "Content-Type": "application/json"})
+    # Entonces se responde 200, no se contesta a nadie y la Actividad del panel explica el motivo
+    assert r.status_code == 200 and whatsapp.enviados == []
+    detalle = web.get(f"/panel/empresas/{empresa['id']}").get_data(as_text=True)
+    assert "Meta no pudo entregar un mensaje a ...6105: ese número no está en la lista de destinatarios de prueba" in detalle

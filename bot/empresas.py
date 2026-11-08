@@ -17,6 +17,11 @@ CAMPOS_ADMIN = ("modelo", "precio_entrada", "precio_salida", "numeros_ignorados"
                 "pausa_horas", "historial_limite", "instrucciones_extra")
 
 
+def nuevo_token_verificacion() -> str:
+    """La palabra secreta que Meta usa una vez para verificar el webhook."""
+    return secrets.token_urlsafe(24)
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -29,7 +34,7 @@ def crear_empresa(almacen, nombre: str, ahora: datetime) -> dict:
         slug, n = f"{base}-{n}", n + 1
     precio_e, precio_s = reglas.PRECIOS[reglas.MODELO_POR_DEFECTO]
     return almacen.crear_empresa(nombre.strip(), slug, ahora, {
-        "verify_token": secrets.token_urlsafe(24),
+        "verify_token": nuevo_token_verificacion(),
         "modelo": reglas.MODELO_POR_DEFECTO,
         "precio_entrada": precio_e,
         "precio_salida": precio_s,

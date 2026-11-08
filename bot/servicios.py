@@ -8,7 +8,7 @@ import threading
 from datetime import datetime
 
 from . import reglas
-from .reglas import MensajeEntrante, ocultar_numero
+from .reglas import FallaDeEntrega, MensajeEntrante, ocultar_numero
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ RESPONDIDO = "respondido"
 DERIVADO = "derivado"
 ERROR = "error"
 VACIO = "vacio"
+FALLA_REGISTRADA = "falla_registrada"
 
 
 class Servicios:
@@ -100,3 +101,14 @@ class Servicios:
 
             return RESPONDIDO if texto else VACIO
 
+    def registrar_falla(self, empresa: dict, falla: FallaDeEntrega, ahora: datetime) -> str:
+        """Meta avisó que no pudo entregar un mensaje del bot: queda en la Actividad con el motivo.
+
+        Se registra en cualquier estado de la empresa (también en prueba), porque explica
+        por qué un mensaje de prueba o un aviso al dueño no llegó.
+        """
+        eid = empresa["id"]
+        if not self._almacen.es_nuevo(eid, f"falla:{falla.id}", ahora):
+            return DUPLICADO
+        self._almacen.registrar_evento(eid, "error", reglas.texto_de_falla(falla), ahora)
+        return FALLA_REGISTRADA

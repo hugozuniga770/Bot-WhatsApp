@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from bot import servicios as s
 from bot.empresas import crear_empresa
+from bot.reglas import FallaDeEntrega
 from conftest import CLIENTE, DUENO
 
 
@@ -145,3 +146,18 @@ def test_RF01_el_bot_le_pide_a_haiku_sin_razonamiento_y_a_otros_modelos_sin_camb
     # Entonces Haiku va sin razonamiento, Sonnet no recibe ese parámetro (le daría error 400) y se cuentan los tokens
     assert cliente.pedidos[0]["thinking"] == {"type": "disabled"} and "thinking" not in cliente.pedidos[1]
     assert (r.texto, r.entrada, r.salida) == ("Hola", 10, 2)
+
+
+def test_RF09_un_mensaje_no_entregado_queda_en_la_actividad_una_sola_vez(servicios, almacen, empresa, whatsapp, ahora):
+    # Dada una empresa en prueba, y Meta avisa (dos veces) que no pudo entregar el mensaje de prueba al dueño
+    empresa = almacen.actualizar_empresa(empresa["id"], {"estado": "revision"}, ahora)
+    falla = FallaDeEntrega("wamid.prueba", DUENO, 131047, "more than 24 hours")
+    # Cuando el bot registra los avisos
+    primero = servicios.registrar_falla(empresa, falla, ahora)
+    segundo = servicios.registrar_falla(empresa, falla, ahora)
+    # Entonces queda un solo error en la Actividad, con el motivo, y no se le manda nada a nadie
+    assert (primero, segundo) == (s.FALLA_REGISTRADA, s.DUPLICADO)
+    eventos = almacen.eventos(empresa["id"])
+    assert [e["tipo"] for e in eventos] == ["error"]
+    assert "pasaron más de 24 horas" in eventos[0]["detalle"] and "...0099" in eventos[0]["detalle"]
+    assert whatsapp.enviados == []

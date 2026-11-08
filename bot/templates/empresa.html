@@ -117,7 +117,7 @@
   </div>
 </section>
 
-<section class="seccion" aria-labelledby="t-conexion">
+<section class="seccion" id="conexion" aria-labelledby="t-conexion">
   <h2 id="t-conexion">Conexión</h2>
   <dl class="datos-credito">
     <div><dt>Número del dueño</dt><dd>{{ e.dueno_numero | telefono }}</dd></div>
@@ -129,6 +129,14 @@
   <div class="copiable"><input id="wh-url" type="text" value="{{ webhook_url }}" readonly><button class="boton" type="button" data-copiar="#wh-url">Copiar</button></div>
   <label for="wh-token">Token de verificación</label>
   <div class="copiable"><input id="wh-token" type="text" value="{{ e.verify_token }}" readonly><button class="boton" type="button" data-copiar="#wh-token">Copiar</button></div>
+  <details>
+    <summary>Cambiar el token de verificación</summary>
+    <p class="suave chico">Meta lo usa solo cuando tocas «Verificar y guardar». Como lo manda dentro de la dirección, queda anotado en los registros de Render: conviene cambiarlo después de conectar. El bot sigue recibiendo los mensajes igual. Si algún día vuelves a verificar en Meta, pega antes el token nuevo.</p>
+    <form method="post" action="{{ url_for('panel.cambiar_token_verificacion', eid=e.id) }}" data-confirmar="¿Cambiar el token de verificación? El bot sigue funcionando igual.">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <div class="acciones"><button class="boton" type="submit">Cambiar el token</button></div>
+    </form>
+  </details>
   <h3 class="seccion">Para publicar la app en Meta</h3>
   <p class="suave chico">En developers.facebook.com → tu app → Configuración de la app → Básica.</p>
   <label for="url-privacidad">URL de la política de privacidad</label>

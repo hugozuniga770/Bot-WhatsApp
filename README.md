@@ -1,9 +1,9 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.4
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.5
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
-- Estado al 08/11/2026: v2.1 en línea en Render y CI en verde (72 pruebas). v2.3 en línea (78 pruebas): la empresa Sentirse Única está cargada y sus llaves verificadas. La v2.4 agrega las páginas de privacidad y de borrado de datos que Meta exige para publicar la app; sin publicarla, Meta no entrega los mensajes reales. 82 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.4, publicar la app en Meta y la prueba con mensajes reales.
+- Estado al 08/11/2026: v2.4 en línea en Render con el CI en verde (82 pruebas, run #6). **Prueba de punta a punta superada:** Hugo le escribió "Hola" al número de prueba de Meta y el bot de Sentirse Única le respondió. La v2.5 anota en la Actividad los mensajes que Meta no pudo entregar, con el motivo, y deja cambiar el token de verificación desde el panel; 89 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.5, cargar en el panel la información del negocio (paso 2), el logo y el número real (D-05).
 
 ## 1. Qué hace
 
@@ -24,8 +24,8 @@ Todo se maneja desde un **panel** pensado para el celular:
 | BOT-RF-05 | No responde dos veces el mismo mensaje, aunque Meta lo reenvíe |
 | BOT-RF-06 | Si Claude falla (sin créditos, caída), el cliente recibe una disculpa y el panel registra el error |
 | BOT-RF-07 | Solo atiende avisos firmados con el App Secret de esa empresa |
-| BOT-RF-08 | Verifica el webhook de cada empresa solo con su propio token |
-| BOT-RF-09 | Ignora los avisos de estado (enviado, entregado, leído) |
+| BOT-RF-08 | Verifica el webhook de cada empresa solo con su propio token, que se puede cambiar desde el panel |
+| BOT-RF-09 | Ignora los avisos de enviado, entregado y leído. Si Meta avisa que no pudo entregar un mensaje, lo anota en la Actividad con el motivo |
 | BOT-RF-10 | No arranca si falta una variable obligatoria, y dice cuál |
 | BOT-RF-11 | Guarda todo en PostgreSQL y lo conserva aunque el servicio se reinicie |
 | BOT-RF-12 | Multiempresa: cada empresa con sus llaves, su número, su manual y su webhook, sin mezclar datos |
@@ -69,7 +69,7 @@ Detalle en [docs/arquitectura.md](docs/arquitectura.md).
 2. **Alta:** el dueño abre el enlace y sigue 6 pasos: su negocio, lo que el bot debe saber, la llave de Claude, los datos de Meta, conectar el webhook y enviar. Cada paso dice dónde está cada dato, y los botones **Probar** lo comprueban en el momento. El paso del webhook cambia solo a **Conectado** cuando Meta lo verifica. Si prefieres, lo llenas tú desde **Editar datos y llaves**.
 3. **Prueba:** al enviar, la empresa queda **En prueba** y el bot solo le responde al dueño, que le escribe al número del negocio desde su celular personal.
 4. **Publicar la app en Meta** (una vez por app): en Configuración de la app → Básica pones el ícono, la categoría y las dos direcciones que muestra el panel en **Conexión** (privacidad y borrado de datos). Después la publicas. Sin esto, Meta no le entrega al bot los mensajes reales.
-5. **Verificar y activar:** tocas **Verificar todo** y **Enviar mensaje de prueba**, y luego **Activar para todos**. Si algo falla, el panel no deja activar y explica qué arreglar.
+5. **Verificar y activar:** tocas **Verificar todo** y **Enviar mensaje de prueba**, y luego **Activar para todos**. Si algo falla, el panel no deja activar y explica qué arreglar. Si Meta acepta un mensaje pero no lo puede entregar (por ejemplo, por la regla de las 24 horas), el motivo aparece en **Actividad**.
 6. **Día a día:** la lista muestra cuántos días de crédito quedan por empresa. Cuando cargues más créditos en platform.claude.com, actualiza el saldo en el panel.
 
 ## 4. Requisitos
@@ -100,8 +100,8 @@ Para que Meta llegue a tu PC mientras pruebas: `cloudflared tunnel --url http://
 python -m pytest -v
 ```
 
-- **En tu PC:** 71 passed y 11 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
-- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 82. El CI falla si alguna se salta.
+- **En tu PC:** 78 passed y 11 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
+- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 89. El CI falla si alguna se salta.
 
 Ninguna prueba usa la red: Meta, Claude y las verificaciones se reemplazan por dobles. [docs/pruebas.md](docs/pruebas.md) relaciona cada test con su requisito.
 
@@ -136,7 +136,7 @@ bot/
   formato.py        dinero, fechas y tiempos en las pantallas
   templates/        pantallas (Jinja)
   static/           estilos y JavaScript
-tests/              82 tests y conftest.py con los dobles
+tests/              89 tests y conftest.py con los dobles
 docs/               arquitectura, despliegue, decisiones, pruebas, cambios, glosario y capturas
 instrucciones.md    plantilla común del manual (vale para todas las empresas)
 render.yaml         cómo Render crea y arranca el servicio
@@ -158,7 +158,8 @@ render.yaml         cómo Render crea y arranca el servicio
 - **Saldo estimado, no leído** (D-15). Anthropic no deja leer el saldo por API en cuentas individuales. El panel cuenta los tokens y resta del saldo que cargaste; actualízalo cuando recargues.
 - **Solo texto** (D-08): audios, fotos y stickers reciben un aviso fijo.
 - **Las respuestas que el dueño escribe desde su celular no entran al historial.** Depende de la coexistencia (D-05).
-- **Aviso al dueño [PROVISIONAL]:** WhatsApp solo deja mandar mensajes libres a quien escribió al negocio en las últimas 24 h. Si no, el aviso falla y queda en Actividad.
+- **Aviso al dueño [PROVISIONAL]:** WhatsApp solo deja mandar mensajes libres a quien escribió al negocio en las últimas 24 h. Si no, el aviso falla y el motivo queda en Actividad. Para que siempre llegue haría falta una plantilla aprobada por Meta.
+- **El token de verificación queda en los registros de Render** (D-24): Meta lo manda dentro de la dirección. Solo sirve para verificar el webhook, no para mandar ni leer mensajes. Cámbialo desde el panel después de conectar.
 - **Render gratis se duerme** tras 15 min sin tráfico: el primer mensaje después tarda alrededor de un minuto (D-02).
 - **Un solo administrador** (D-20): una contraseña, sin usuarios ni permisos por empresa.
 - **Decisiones y cambios:** [docs/decisiones.md](docs/decisiones.md) y [docs/cambios.md](docs/cambios.md).

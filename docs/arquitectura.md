@@ -1,7 +1,7 @@
 # Arquitectura
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 08/11/2026 · Versión: v2.0
+- Fecha: 08/11/2026 · Versión: v2.5
 - Relacionados: [README](../README.md) · [Despliegue](despliegue.md) · [Decisiones](decisiones.md) · [Pruebas](pruebas.md)
 
 ## 1. Componentes
@@ -44,6 +44,8 @@ sequenceDiagram
     S->>M: enviar_texto
     M->>C: respuesta
 ```
+
+Al mismo webhook llegan los **avisos de estado** de los mensajes que mandó el bot. Los de enviado, entregado y leído se ignoran. Los de **no entregado** (`failed`) pasan a `servicios.registrar_falla`, que deja en la Actividad un error con el motivo explicado (`reglas.texto_de_falla`), una sola vez aunque Meta lo repita (BOT-RF-09).
 
 Antes de llamar a Claude, `atender` corta en este orden:
 1. Empresa pausada o sin datos: no responde.
@@ -96,7 +98,7 @@ Las tablas se crean solas al arrancar. Si la base tiene tablas de la v1.x, el se
 ## 5. Seguridad
 
 - **Llaves cifradas (BOT-RF-13):** Fernet, con una clave derivada de `CLAVE_MAESTRA`. En la base y en el panel nunca aparecen completas (`sk-ant-…1234`).
-- **Webhook por empresa (BOT-RF-07, 08):** cada empresa tiene su `verify_token` y su App Secret. Un aviso firmado para una empresa no sirve para otra.
+- **Webhook por empresa (BOT-RF-07, 08):** cada empresa tiene su `verify_token` y su App Secret. Un aviso firmado para una empresa no sirve para otra. El `verify_token` se compara en tiempo constante y se cambia desde el panel; queda en los registros de Render porque Meta lo manda en la dirección (D-24).
 - **Panel (BOT-RF-14):**
   - una contraseña (`ADMIN_PASSWORD`);
   - sesión de 30 días con cookie `HttpOnly`, `SameSite=Lax` y `Secure` en Render;
