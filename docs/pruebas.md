@@ -16,19 +16,21 @@ Los tests de `test_verificaciones.py` imitan las respuestas reales de Claude y d
 
 Los tests del almacén (`test_almacen.py`) son un **contrato** (D-12): cada uno corre con `AlmacenMemoria` y con `AlmacenPostgres`. Los de Postgres necesitan `TEST_DATABASE_URL`:
 
-- **En tu PC**, sin esa variable, salen **60 passed, 9 skipped**.
-- **En el CI**, un PostgreSQL 17 temporal; salen **69 passed**, y el CI falla si alguno se salta.
+- **En tu PC**, sin esa variable, salen **63 passed, 9 skipped**.
+- **En el CI**, un PostgreSQL 17 temporal; salen **72 passed**, y el CI falla si alguno se salta.
 - **Para correrlos en tu PC**, usa una base **de prueba**: los tests vacían las tablas. **Nunca la de producción.**
 
 ## 2. Estado
 
 | Corrida | Fecha | Resultado |
 |---|---|---|
+| v2.1 · entorno de armado, sin base | 08/11/2026 | **63 passed, 9 skipped** |
+| v2.0 · GitHub Actions (Python 3.13, PostgreSQL 17) | 08/11/2026 | **69 passed**, 0 saltadas (run #2, commit 6bdc7ec) |
 | v2.0 · entorno de armado, sin base | 08/11/2026 | **60 passed, 9 skipped** |
 | v2.0 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **69 passed**, 0 saltadas |
 | v2.0 · recorrido en navegador de celular (390 px) con gunicorn + PostgreSQL | 08/11/2026 | Ver sección 3 |
 | v2.0 · tu PC (Windows) | — | **Pendiente:** anota aquí el resultado |
-| v2.0 · GitHub Actions (Python 3.13, PostgreSQL 17) | — | **Pendiente:** anota aquí el resultado y el enlace al run |
+| v2.1 · GitHub Actions (Python 3.13, PostgreSQL 17) | — | **Pendiente:** anota aquí el resultado |
 | v1.0 · GitHub Actions | 07/11/2026 | En verde (17 passed), según Hugo |
 
 ## 3. Recorrido de punta a punta (08/11/2026)
@@ -54,6 +56,7 @@ Requisitos cubiertos: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF
 
 | Requisito | Test | Archivo | Estado |
 |---|---|---|---|
+| BOT-RF-01 | `test_RF01_el_bot_le_pide_a_haiku_sin_razonamiento_y_a_otros_modelos_sin_cambios` | `test_servicios.py` | Pasa |
 | BOT-RF-01 | `test_RF01_responde_un_texto_con_el_asistente_y_guarda_ambos_mensajes` | `test_servicios.py` | Pasa |
 | BOT-RF-02 | `test_RF02_el_asistente_recibe_la_conversacion_anterior` | `test_servicios.py` | Pasa |
 | BOT-RF-02 | `test_RF02_historial_se_recorta_y_empieza_por_el_cliente` | `test_reglas.py` | Pasa |
@@ -98,6 +101,8 @@ Requisitos cubiertos: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF
 | BOT-RF-16 | `test_RF16_el_webhook_y_el_estado_general` | `test_verificaciones.py` | Pasa |
 | BOT-RF-16 | `test_RF16_en_el_enlace_se_puede_probar_la_llave_antes_de_enviar` | `test_panel.py` | Pasa |
 | BOT-RF-16 | `test_RF16_llave_de_claude_invalida_o_sin_creditos_se_explica` | `test_verificaciones.py` | Pasa |
+| BOT-RF-16 | `test_RF16_la_prueba_de_haiku_apaga_el_razonamiento_y_deja_espacio_para_responder` | `test_verificaciones.py` | Pasa |
+| BOT-RF-16 | `test_RF16_un_400_muestra_el_motivo_que_da_la_api` | `test_verificaciones.py` | Pasa |
 | BOT-RF-16 | `test_RF16_llave_de_claude_que_funciona` | `test_verificaciones.py` | Pasa |
 | BOT-RF-16 | `test_RF16_no_se_puede_activar_sin_verificar` | `test_panel.py` | Pasa |
 | BOT-RF-16 | `test_RF16_numero_y_token_de_meta_correctos` | `test_verificaciones.py` | Pasa |

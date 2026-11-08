@@ -16,16 +16,18 @@ class ClaudeFalso:
     def __init__(self, error=None):
         self.error = error
         self.messages = self
+        self.pedido = None
 
     def create(self, **kwargs):
+        self.pedido = kwargs
         if self.error:
             raise self.error
         return object()
 
 
-def error_claude(clase, codigo, mensaje):
+def error_claude(clase, codigo, mensaje, body=None):
     respuesta = httpx.Response(codigo, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
-    return clase(mensaje, response=respuesta, body=None)
+    return clase(mensaje, response=respuesta, body=body)
 
 
 class Respuesta:
@@ -95,3 +97,20 @@ def test_RF16_el_webhook_y_el_estado_general():
     assert verificar_webhook({"webhook": AHORA - timedelta(minutes=3)}, AHORA).estado == "ok"
     assert estado_general([{"estado": "ok"}, {"estado": "atencion"}]) == "atencion"
     assert estado_general([{"estado": "ok"}, {"estado": "falla"}, {"estado": "pendiente"}]) == "falla"
+
+
+def test_RF16_la_prueba_de_haiku_apaga_el_razonamiento_y_deja_espacio_para_responder():
+    # Dado Haiku 5.5, que trae el razonamiento encendido por defecto
+    cliente = ClaudeFalso()
+    # Cuando se prueba la llave
+    verificar_claude("sk-ant-x", "claude-haiku-5-5", cliente=cliente)
+    # Entonces se pide sin razonamiento y con más de 1 token
+    assert cliente.pedido["thinking"] == {"type": "disabled"} and cliente.pedido["max_tokens"] > 1
+
+
+def test_RF16_un_400_muestra_el_motivo_que_da_la_api():
+    # Dado un 400 de Claude con su explicación
+    cuerpo = {"type": "error", "error": {"type": "invalid_request_error", "message": "max_tokens: muy bajo para este modelo"}}
+    r = verificar_claude("sk-ant-x", "m", cliente=ClaudeFalso(error_claude(anthropic.BadRequestError, 400, "Error code: 400", cuerpo)))
+    # Entonces el panel muestra el motivo, no solo el número
+    assert r.estado == "falla" and "max_tokens: muy bajo para este modelo" in r.detalle

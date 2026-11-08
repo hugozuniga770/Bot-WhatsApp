@@ -22,6 +22,20 @@ PRECIOS = {
 }
 MODELO_POR_DEFECTO = "claude-haiku-5-5"
 
+# Haiku 5.5 trae el razonamiento (thinking) encendido por defecto. Para responder
+# WhatsApp no hace falta: apagarlo da respuestas mas rapidas y mas baratas, y evita
+# que el pensamiento se coma el limite de tokens. Fuente: platform.claude.com/docs/en/
+# build-with-claude/thinking (consultada el 08/11/2026). En Sonnet 5.5 "disabled" da
+# error 400, por eso solo se aplica a los modelos de esta lista.
+MODELOS_SIN_RAZONAMIENTO = ("claude-haiku-5-5",)
+
+
+def opciones_de_modelo(modelo: str) -> dict:
+    """Parametros extra para la API segun el modelo."""
+    if modelo in MODELOS_SIN_RAZONAMIENTO:
+        return {"thinking": {"type": "disabled"}}
+    return {}
+
 
 # ---------------------------------------------------------------- mensajes de Meta
 

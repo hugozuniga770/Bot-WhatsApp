@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from anthropic import Anthropic
 
+from .reglas import opciones_de_modelo
+
 
 @dataclass(frozen=True)
 class Respuesta:
@@ -24,6 +26,7 @@ class Asistente:
             max_tokens=self._max_tokens,
             system=self._instrucciones,
             messages=historial,
+            **opciones_de_modelo(self._modelo),
         )
         texto = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip()
         uso = getattr(r, "usage", None)

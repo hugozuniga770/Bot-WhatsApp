@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import anthropic
 import requests
 
-from .reglas import hace
+from .reglas import hace, opciones_de_modelo
 from .whatsapp import WhatsApp
 
 CALIDAD = {"GREEN": "alta", "YELLOW": "media", "RED": "baja"}
@@ -34,8 +34,9 @@ def verificar_claude(api_key: str, modelo: str, cliente=None) -> Chequeo:
         return c("pendiente", "Falta la llave de Claude.")
     try:
         cliente = cliente or anthropic.Anthropic(api_key=api_key, timeout=20.0, max_retries=0)
-        # Una respuesta de 1 token: prueba la llave, el modelo y que haya saldo (cuesta casi nada).
-        cliente.messages.create(model=modelo, max_tokens=1, messages=[{"role": "user", "content": "Responde: ok"}])
+        # Una respuesta cortisima: prueba la llave, el modelo y que haya saldo (cuesta casi nada).
+        cliente.messages.create(model=modelo, max_tokens=16, messages=[{"role": "user", "content": "Responde: ok"}],
+                                **opciones_de_modelo(modelo))
         return c("ok", f"La llave funciona, la cuenta tiene créditos y el modelo {modelo} responde.")
     except anthropic.AuthenticationError:
         return c("falla", "La llave no es válida: está mal copiada o fue borrada. Crea otra en platform.claude.com, en Claves de API.")
@@ -50,7 +51,17 @@ def verificar_claude(api_key: str, modelo: str, cliente=None) -> Chequeo:
     except anthropic.APIStatusError as e:
         if "credit" in str(e).lower():
             return c("falla", "La cuenta no tiene créditos. Cárgalos en platform.claude.com, en Facturación (Billing).")
-        return c("falla", f"Claude rechazó la prueba (error {e.status_code}).")
+        return c("falla", f"Claude rechazó la prueba (error {e.status_code}): {motivo_de_claude(e)}")
+
+
+def motivo_de_claude(e) -> str:
+    """El mensaje que explica el error, tal como lo manda la API (no contiene la llave)."""
+    cuerpo = getattr(e, "body", None)
+    if isinstance(cuerpo, dict):
+        mensaje = (cuerpo.get("error") or {}).get("message") or cuerpo.get("message")
+        if mensaje:
+            return str(mensaje)[:300]
+    return (getattr(e, "message", "") or str(e))[:300]
 
 
 def verificar_meta(token: str, phone_number_id: str, app_id: str, app_secret: str,

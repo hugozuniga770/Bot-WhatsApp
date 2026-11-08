@@ -1,9 +1,9 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.0
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v2.1
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
-- Estado al 08/11/2026: código listo. En el entorno de armado pasaron 69 pruebas contra un PostgreSQL real y un recorrido completo en un navegador de celular. **Pendiente:** el CI de la v2.0, el despliegue ([docs/despliegue.md](docs/despliegue.md)) y cargar la primera empresa.
+- Estado al 08/11/2026: v2.0 desplegada en Render y CI en verde (69 pruebas). La v2.1 apaga el razonamiento de Haiku 5.5, que hacía fallar la prueba de la llave con un error 400: 72 pruebas en el entorno de armado. **Pendiente:** el CI de la v2.1 y terminar de cargar la primera empresa.
 
 ## 1. Qué hace
 
@@ -98,8 +98,8 @@ Para que Meta llegue a tu PC mientras pruebas: `cloudflared tunnel --url http://
 python -m pytest -v
 ```
 
-- **En tu PC:** 60 passed y 9 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
-- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 69. El CI falla si alguna se salta.
+- **En tu PC:** 63 passed y 9 skipped. Los saltados son los de PostgreSQL, que necesitan una base de prueba.
+- **En el CI:** GitHub levanta un PostgreSQL temporal y corren las 72. El CI falla si alguna se salta.
 
 Ninguna prueba usa la red: Meta, Claude y las verificaciones se reemplazan por dobles. [docs/pruebas.md](docs/pruebas.md) relaciona cada test con su requisito.
 
@@ -134,7 +134,7 @@ bot/
   formato.py        dinero, fechas y tiempos en las pantallas
   templates/        pantallas (Jinja)
   static/           estilos y JavaScript
-tests/              69 tests y conftest.py con los dobles
+tests/              72 tests y conftest.py con los dobles
 docs/               arquitectura, despliegue, decisiones, pruebas, cambios, glosario y capturas
 instrucciones.md    plantilla común del manual (vale para todas las empresas)
 render.yaml         cómo Render crea y arranca el servicio

@@ -123,3 +123,25 @@ def test_RF19_los_numeros_ignorados_no_reciben_respuesta(servicios, almacen, emp
     # Entonces no se le responde
     assert servicios.atender(empresa, mensaje("Hola mamá"), ahora) == s.IGNORADO
     assert whatsapp.enviados == []
+
+
+def test_RF01_el_bot_le_pide_a_haiku_sin_razonamiento_y_a_otros_modelos_sin_cambios():
+    # Dado el asistente real con un cliente de Claude falso que anota el pedido
+    from bot.asistente import Asistente
+
+    class Cliente:
+        def __init__(self):
+            self.messages, self.pedidos = self, []
+
+        def create(self, **kwargs):
+            self.pedidos.append(kwargs)
+            from types import SimpleNamespace as N
+            return N(content=[N(type="text", text="Hola")], usage=N(input_tokens=10, output_tokens=2))
+
+    cliente = Cliente()
+    # Cuando responde con Haiku 5.5 y con Sonnet 5.5
+    r = Asistente("k", "claude-haiku-5-5", "manual", cliente=cliente).responder([{"role": "user", "content": "Hola"}])
+    Asistente("k", "claude-sonnet-5-5", "manual", cliente=cliente).responder([{"role": "user", "content": "Hola"}])
+    # Entonces Haiku va sin razonamiento, Sonnet no recibe ese parámetro (le daría error 400) y se cuentan los tokens
+    assert cliente.pedidos[0]["thinking"] == {"type": "disabled"} and "thinking" not in cliente.pedidos[1]
+    assert (r.texto, r.entrada, r.salida) == ("Hola", 10, 2)

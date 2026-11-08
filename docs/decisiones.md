@@ -32,4 +32,5 @@
 | D-17 | Alta por enlace de un solo uso que vence en 7 días; en la base solo el hash | Que el dueño cree una cuenta | El dueño no necesita usuario ni contraseña, y el enlace no se puede reusar | [ACUERDO] (07/11/2026) |
 | D-18 | Al enviar el alta, la empresa queda "en prueba": el bot solo le responde al dueño | Activarla directo | Se prueba con el número real sin que los clientes vean errores | [PROPUESTA] |
 | D-19 | Activar exige una verificación sin fallas | Activar sin verificar | Evita dejar activo un bot con una llave mala | [PROPUESTA] |
+| D-21 | Razonamiento (thinking) apagado en Haiku 5.5 | Dejarlo encendido (por defecto) | Para responder WhatsApp no hace falta. Apagado, las respuestas son más rápidas y baratas, y la estimación de crédito se mantiene. En Sonnet 5.5 "disabled" da error 400, así que solo se aplica a los modelos de `MODELOS_SIN_RAZONAMIENTO` (documentación oficial, 08/11/2026) | [PROPUESTA] |
 | D-20 | Un solo administrador con contraseña y bloqueo por intentos | Usuarios y permisos por empresa | Alcanza para Hugo; agregar usuarios sería una versión futura | [PROVISIONAL] |
