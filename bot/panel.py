@@ -291,13 +291,15 @@ def saldo(eid):
 def borrar_cliente(eid):
     c = ctx()
     _empresa_o_404(eid)
-    numero = reglas.normalizar_numero(request.form.get("numero", ""))
-    if not 8 <= len(numero) <= 15:
-        flash("Escribe el número del cliente con código de país, por ejemplo 591 70000000.", "error")
+    crudo = "".join(request.form.get("numero", "").split()).lower()
+    # Un chat de Messenger o Instagram se guarda como fb:<PSID> o ig:<IGSID> (D-36): también se borra (C-20)
+    numero = crudo if ID_SOCIAL.fullmatch(crudo) else reglas.normalizar_numero(crudo)
+    if not (ID_SOCIAL.fullmatch(numero) or 8 <= len(numero) <= 15):
+        flash("Escribe el número del cliente con código de país, por ejemplo 591 70000000, o su cuenta de Messenger o Instagram (fb:… o ig:…).", "error")
     else:
         n = c.almacen.borrar_cliente(eid, numero)
         c.almacen.registrar_evento(eid, "borrado", f"Datos del cliente ...{numero[-4:]} borrados ({n} mensajes).", c.ahora())
-        flash(f"Listo: se borraron {n} mensajes y la pausa de ese número." if n else "Ese número no tenía mensajes guardados.", "ok")
+        flash(f"Listo: se borraron {n} mensajes y la pausa de ese cliente." if n else "Ese cliente no tenía mensajes guardados.", "ok")
     return redirect(url_for(".detalle", eid=eid) + "#datos")
 
 

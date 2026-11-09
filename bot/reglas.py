@@ -48,22 +48,41 @@ class MensajeEntrante:
     media_id: str = ""  # foto o documento (por ejemplo, un comprobante de pago)
 
 
-def extraer_mensajes(payload) -> list[MensajeEntrante]:
+def _es_ajena(cuentas: dict | None, canal: str, recibida) -> bool:
+    """True si el aviso es de otra cuenta de Meta (otro número, otra página, otro Instagram).
+
+    Solo se compara cuando la empresa tiene esa cuenta configurada y el aviso dice a cuál va.
+    """
+    esperada = str((cuentas or {}).get(canal) or "")
+    recibida = str(recibida or "")
+    return bool(esperada and recibida and esperada != recibida)
+
+
+def _numero_del_aviso(valor: dict) -> str:
+    return str(((valor.get("metadata") or {}) if isinstance(valor, dict) else {}).get("phone_number_id") or "")
+
+
+def extraer_mensajes(payload, cuentas: dict | None = None) -> list[MensajeEntrante]:
     """Saca los mensajes de clientes del JSON que manda Meta.
 
     Ignora los avisos de estado (enviado, entregado, leido), que llegan
     al mismo webhook pero no son mensajes.
+
+    `cuentas` ({"whatsapp": phone_number_id, "messenger": página, "instagram": id de Instagram})
+    deja afuera los avisos de otras cuentas que comparten la misma app de Meta (BOT-RF-12, C-20).
     """
     mensajes = []
     if not isinstance(payload, dict):
         return mensajes
     if payload.get("object") in OBJETOS_SOCIALES:
-        return _extraer_sociales(payload)
+        return _extraer_sociales(payload, cuentas)
     for entrada in payload.get("entry") or []:
         for cambio in entrada.get("changes") or []:
             if cambio.get("field", "messages") != "messages":
                 continue
             valor = cambio.get("value") or {}
+            if _es_ajena(cuentas, "whatsapp", _numero_del_aviso(valor)):
+                continue
             for m in valor.get("messages") or []:
                 if not m.get("id") or not m.get("from"):
                     continue
@@ -111,17 +130,20 @@ def etiqueta_contacto(destino: str) -> str:
     return f"de {NOMBRES_CANAL[canal]} (...{destino[-4:]})"
 
 
-def _extraer_sociales(payload: dict) -> list[MensajeEntrante]:
+def _extraer_sociales(payload: dict, cuentas: dict | None = None) -> list[MensajeEntrante]:
     """Mensajes de Messenger (object "page") o Instagram (object "instagram").
 
     Se ignoran los ecos (lo que manda la propia página, también desde Business Suite),
     las lecturas y las entregas. Un botón tocado (postback) se trata como texto.
+    El id de cada entrada es la página (Messenger) o la cuenta de Instagram que recibió el mensaje.
     """
     canal = OBJETOS_SOCIALES[payload["object"]]
     prefijo = PREFIJOS[canal]
     mensajes = []
     for entrada in payload.get("entry") or []:
         propio = str(entrada.get("id") or "")
+        if _es_ajena(cuentas, canal, propio):
+            continue
         for evento in entrada.get("messaging") or []:
             remitente = str((evento.get("sender") or {}).get("id") or "")
             if not remitente or remitente == propio:
@@ -175,10 +197,11 @@ MOTIVOS_DE_FALLA = {
 }
 
 
-def extraer_fallas(payload) -> list[FallaDeEntrega]:
+def extraer_fallas(payload, cuentas: dict | None = None) -> list[FallaDeEntrega]:
     """Saca del JSON de Meta los avisos de mensajes que no se pudieron entregar.
 
-    Los avisos de enviado, entregado y leído se ignoran (BOT-RF-09).
+    Los avisos de enviado, entregado y leído se ignoran (BOT-RF-09). Los de otro número
+    de la misma app, también (`cuentas`, como en extraer_mensajes).
     """
     fallas = []
     if not isinstance(payload, dict):
@@ -186,6 +209,8 @@ def extraer_fallas(payload) -> list[FallaDeEntrega]:
     for entrada in payload.get("entry") or []:
         for cambio in entrada.get("changes") or []:
             if cambio.get("field", "messages") != "messages":
+                continue
+            if _es_ajena(cuentas, "whatsapp", _numero_del_aviso(cambio.get("value") or {})):
                 continue
             for estado in (cambio.get("value") or {}).get("statuses") or []:
                 if estado.get("status") != "failed" or not estado.get("id"):

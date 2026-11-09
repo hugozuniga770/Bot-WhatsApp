@@ -141,9 +141,12 @@ def test_RF33_mensajeria_manda_cada_destino_por_su_canal_y_parte_los_textos_larg
     assert whatsapp.enviados == [("59170000001", "Hola")]
     assert len(sesion.pedidos) == 3
     metodo, url, kw = sesion.pedidos[0]
-    assert url.endswith(f"/v23.0/{PAGINA}/messages") and kw["params"] == {"access_token": "TOKEN-PAGINA"}
+    # El token de la página va en la cabecera y nunca en la dirección (C-20)
+    assert url.endswith(f"/v23.0/{PAGINA}/messages") and kw["headers"] == {"Authorization": "Bearer TOKEN-PAGINA"}
+    assert "TOKEN-PAGINA" not in url and "params" not in kw
     assert kw["json"]["recipient"] == {"id": "9988776655443"} and all(len(p[2]["json"]["message"]["text"]) <= 1000 for p in sesion.pedidos)
-    assert m.descargar_media("https://cdn.fb/x.jpg")[0] and sesion.pedidos[-1][1] == "https://cdn.fb/x.jpg"
+    foto = "https://scontent.xx.fbcdn.net/v/t1/x.jpg"
+    assert m.descargar_media(foto)[0] and sesion.pedidos[-1][1] == foto
 
 
 def test_RF33_sin_pagina_conectada_no_se_puede_mandar_por_messenger():
@@ -283,3 +286,102 @@ def test_RF35_verificar_todo_revisa_la_pagina_conectada_sin_bloquear_whatsapp(ap
 def test_RF35_las_pantallas_de_canales_piden_sesion(web, empresa):
     assert web.get(f"/panel/empresas/{empresa['id']}/canales").status_code == 302
     assert web.post(f"/panel/empresas/{empresa['id']}/canales/conectar").status_code == 302
+
+
+# ------------------------------------------------------------------ revisión v3.3.1 (C-20)
+def test_RF33_si_falla_la_conexion_el_token_de_la_pagina_no_queda_en_los_registros(caplog):
+    """Dado que la conexión con Meta se corta, cuando el bot intenta responder por Messenger,
+    entonces el error queda en los registros, pero sin el token de la página."""
+    import requests
+
+    class SesionCaida(SesionFalsa):
+        def post(self, url, **kw):
+            # requests arma así el error: con la dirección completa que se pidió
+            raise requests.ConnectionError(f"HTTPSConnectionPool: Max retries exceeded with url: {url}?{kw.get('params', '')}")
+
+    with caplog.at_level("DEBUG"):
+        envio = Messenger(PAGINA, "EAATOKENSECRETODELAPAGINA", sesion=SesionCaida()).enviar_texto(PSID, "Hola")
+    assert not envio and "Sin conexión" in envio.detalle
+    assert "EAATOKENSECRETODELAPAGINA" not in caplog.text
+
+
+def test_RF33_la_ventana_de_24_horas_se_explica_bien_y_no_como_falta_de_permiso():
+    """Meta manda la ventana de 24 h como código 10 con subcódigo 2018278 (el 10 solo es "sin permiso")."""
+    fuera_de_ventana = Respuesta({"error": {"code": 10, "error_subcode": 2018278, "message": "outside of allowed window"}}, ok=False, estado=400)
+    sin_permiso = Respuesta({"error": {"code": 10, "message": "Requires pages_messaging permission"}}, ok=False, estado=403)
+    raro = Respuesta(["no", "es", "el", "json", "de", "siempre"], ok=False, estado=502)
+    envios = [Messenger(PAGINA, "T", sesion=SesionFalsa({"messages": r})).enviar_texto(PSID, "Hola")
+              for r in (fuera_de_ventana, sin_permiso, raro)]
+    assert "24 horas" in envios[0].detalle and envios[0].codigo == 10
+    assert "revisión de la app" in envios[1].detalle
+    assert not envios[2] and envios[2].codigo is None  # una respuesta rara no hace caer al bot
+
+
+def test_RF33_si_meta_no_acepta_la_respuesta_la_actividad_dice_por_que(servicios, almacen, empresa, mensaje, whatsapp, ahora, config):
+    from bot.whatsapp import Envio
+    empresa = _conectar(almacen, empresa, ahora, config)
+    whatsapp.enviar_texto = lambda destino, texto: Envio(False, 10, "falta la revisión de la app de Meta")
+    servicios.atender(empresa, mensaje("Hola", numero=PSID), ahora)
+    assert almacen.eventos(empresa["id"], 1)[0]["detalle"] == "Meta no aceptó la respuesta (código 10): falta la revisión de la app de Meta."
+
+
+def test_RF33_solo_se_bajan_archivos_de_los_servidores_de_meta():
+    sesion = SesionFalsa()
+    messenger = Messenger(PAGINA, "T", sesion=sesion)
+    for url in ("https://169.254.169.254/latest/meta-data", "http://scontent.xx.fbcdn.net/x.jpg",
+                "https://fbcdn.net.ejemplo.com/x.jpg", "https://ejemplo.com/?u=fbcdn.net", "nada"):
+        assert messenger.descargar(url) == (False, (None, "El archivo no viene de Meta."))
+    assert sesion.pedidos == []
+    assert messenger.descargar("https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1")[0]
+
+
+def test_RF12_el_webhook_ignora_los_mensajes_de_otra_pagina_u_otro_instagram(web, almacen, empresa, config, firmar, whatsapp, ahora):
+    """Dada una empresa con su página e Instagram conectados, cuando la misma app de Meta avisa de
+    mensajes a otra página u otra cuenta de Instagram, entonces el bot no los atiende."""
+    empresa = _conectar(almacen, empresa, ahora, config)
+    almacen.actualizar_empresa(empresa["id"], {"meta_app_secret_cif": Cifrador(config.clave_maestra).cifrar(SECRETO_META)}, ahora)
+    for datos in (_pagina("page", "5550001112", _texto("6655443322110", "m_otra", "Hola", "5550001112")),
+                  _pagina("instagram", "17841499999999999", _texto("9988776655443", "ig_otra", "Hola", "17841499999999999"))):
+        cuerpo, firma = firmar(datos)
+        r = web.post(f"/webhook/{empresa['slug']}", data=cuerpo, headers={"X-Hub-Signature-256": firma, "Content-Type": "application/json"})
+        assert r.status_code == 200
+    assert whatsapp.enviados == []
+    # Y los de su propia página sí
+    cuerpo, firma = firmar(_pagina("page", PAGINA, _texto("6655443322110", "m_propia", "Hola")))
+    web.post(f"/webhook/{empresa['slug']}", data=cuerpo, headers={"X-Hub-Signature-256": firma, "Content-Type": "application/json"})
+    assert [d for d, _ in whatsapp.enviados] == [PSID]
+
+
+def test_RF12_reglas_separan_los_avisos_de_cada_cuenta():
+    cuentas = {"whatsapp": "111", "messenger": PAGINA, "instagram": IG}
+    wa = lambda pnid: {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {
+        "metadata": {"phone_number_id": pnid}, "messages": [{"id": f"w{pnid}", "from": "59170000001", "type": "text", "text": {"body": "Hola"}}],
+        "statuses": [{"id": f"s{pnid}", "status": "failed", "recipient_id": "59170000001", "errors": [{"code": 131047}]}]}}]}]}
+    assert [m.id for m in reglas.extraer_mensajes(wa("111"), cuentas)] == ["w111"]
+    assert reglas.extraer_mensajes(wa("222"), cuentas) == [] and reglas.extraer_fallas(wa("222"), cuentas) == []
+    assert len(reglas.extraer_fallas(wa("111"), cuentas)) == 1
+    # Sin cuenta configurada todavía (empresa recién creada), no se filtra
+    assert len(reglas.extraer_mensajes(wa("222"), {"whatsapp": ""})) == 1
+
+
+def test_RF20_las_paginas_legales_nombran_messenger_e_instagram_si_estan_conectados(web, almacen, empresa, config, ahora):
+    solo_whatsapp = web.get(f"/privacidad/{empresa['slug']}").get_data(as_text=True)
+    assert "Asistente de WhatsApp ·" in solo_whatsapp and "Instagram" not in solo_whatsapp
+    _conectar(almacen, empresa, ahora, config)
+    privacidad = web.get(f"/privacidad/{empresa['slug']}").get_data(as_text=True)
+    borrado = web.get(f"/eliminar-datos/{empresa['slug']}").get_data(as_text=True)
+    assert "WhatsApp, Messenger e Instagram" in privacidad and "identificador que Meta le da a tu cuenta" in privacidad
+    assert "comprobante" in privacidad
+    assert "mismo chat en el que conversaste (WhatsApp, Messenger, Instagram)" in borrado
+
+
+def test_RF20_el_admin_borra_un_chat_de_messenger_con_la_cuenta_del_aviso(admin, servicios, almacen, empresa, mensaje, asistente, ahora, config):
+    empresa = _conectar(almacen, empresa, ahora, config)
+    asistente.respuestas = ["Le paso con Rosa. [PASAR_A_HUMANO]"]
+    servicios.atender(empresa, mensaje("Quiero borrar mis datos", numero=PSID), ahora)
+    # El aviso de la Actividad trae la cuenta completa, para poder copiarla
+    assert any(PSID in e["detalle"] and "pasado a Rosa" in e["detalle"] for e in almacen.eventos(empresa["id"]))
+    web, csrf = admin
+    r = web.post(f"/panel/empresas/{empresa['id']}/borrar-cliente", data={"csrf": csrf, "numero": " FB:6655443322110 "}, follow_redirects=True)
+    assert "se borraron 2 mensajes" in r.get_data(as_text=True)
+    assert almacen.historial(empresa["id"], PSID) == [] and almacen.pausado_hasta(empresa["id"], PSID) is None

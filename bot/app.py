@@ -105,9 +105,17 @@ def recibir(slug):
     if isinstance(datos, dict) and datos.get("object") in reglas.OBJETOS_SOCIALES:
         # Para que la pantalla Canales muestre si llegan avisos de Messenger o Instagram
         c.almacen.marcar_actividad(empresa["id"], f"webhook_{reglas.OBJETOS_SOCIALES[datos['object']]}", c.ahora())
-    for msg in reglas.extraer_mensajes(datos):
+    # Solo los avisos de las cuentas de esta empresa: si la app de Meta tiene otro número,
+    # otra página u otro Instagram, sus mensajes también llegan aquí (BOT-RF-12, C-20).
+    from .canales import cuentas_de
+    cuentas = cuentas_de(empresa)
+    mensajes, fallas = reglas.extraer_mensajes(datos, cuentas), reglas.extraer_fallas(datos, cuentas)
+    ajenos = len(reglas.extraer_mensajes(datos)) - len(mensajes) + len(reglas.extraer_fallas(datos)) - len(fallas)
+    if ajenos:
+        log.warning("[%s] %s aviso(s) de otra cuenta de Meta ignorado(s)", slug, ajenos)
+    for msg in mensajes:
         c.ejecutar(_atender_seguro, c, empresa["id"], msg)
-    for falla in reglas.extraer_fallas(datos):
+    for falla in fallas:
         c.ejecutar(_registrar_falla_segura, c, empresa["id"], falla)
     return "ok", 200
 
@@ -152,12 +160,25 @@ def respuesta_de_archivo(datos: bytes, nombre: str):
     return respuesta
 
 
+def _canales_en_texto(empresa: dict) -> dict:
+    """Para las páginas legales: 'WhatsApp', 'WhatsApp y Messenger', 'WhatsApp, Messenger e Instagram'."""
+    from .canales import canales_conectados
+    nombres = [reglas.NOMBRES_CANAL[c] for c in canales_conectados(empresa)]
+    if len(nombres) == 1:
+        texto = nombres[0]
+    else:
+        union = "e" if nombres[-1].lower().startswith(("i", "hi")) else "y"  # "e Instagram", no "y Instagram"
+        texto = f"{', '.join(nombres[:-1])} {union} {nombres[-1]}"
+    return {"canales": nombres, "canales_texto": texto, "con_redes": len(nombres) > 1}
+
+
 @webhook.get("/privacidad/<slug>")
 def privacidad(slug):
-    """Política de privacidad de una empresa (Meta la pide para publicar la app)."""
+    """Política de privacidad de una empresa (Meta la pide para publicar la app y para la revisión
+    de los permisos de Messenger e Instagram)."""
     from flask import render_template
     empresa = ctx().almacen.empresa_por_slug(slug) or abort(404)
-    return render_template("privacidad.html", empresa=empresa)
+    return render_template("privacidad.html", empresa=empresa, **_canales_en_texto(empresa))
 
 
 @webhook.get("/eliminar-datos/<slug>")
@@ -165,7 +186,7 @@ def eliminar_datos(slug):
     """Instrucciones para borrar los datos (Meta las pide para publicar la app)."""
     from flask import render_template
     empresa = ctx().almacen.empresa_por_slug(slug) or abort(404)
-    return render_template("eliminar_datos.html", empresa=empresa)
+    return render_template("eliminar_datos.html", empresa=empresa, **_canales_en_texto(empresa))
 
 
 @webhook.get("/salud/base")

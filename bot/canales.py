@@ -8,11 +8,12 @@
   cuentas de Instagram, suscribe la página a la app y registra el webhook de la app.
 """
 import logging
+from urllib.parse import urlsplit
 
 import requests
 
 from . import reglas
-from .whatsapp import GRAPH, Envio, error_de_meta
+from .whatsapp import GRAPH, Envio, error_de_meta, subcodigo_de_meta
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,12 @@ PERMISOS = {
 CAMPOS_PAGINA = "messages,messaging_postbacks"
 CAMPOS_INSTAGRAM = "messages"
 
-# Errores frecuentes al enviar por Messenger o Instagram, explicados para el panel
+# Desde dónde Messenger e Instagram mandan los archivos (fotos, PDF). Solo se baja de ahí.
+DOMINIOS_DE_META = ("fbcdn.net", "fbsbx.com", "cdninstagram.com", "facebook.com", "instagram.com")
+
+# Errores frecuentes al enviar por Messenger o Instagram, explicados para el panel.
+# Se busca primero el `error_subcode` y después el código: la ventana de 24 horas llega como
+# código 10 con subcódigo 2018278, y sin mirar el subcódigo se confundía con un permiso faltante.
 MOTIVOS_SOCIALES = {
     10: "la app no tiene permiso para responder en esta página (falta la revisión de la app de Meta o el permiso)",
     200: "la app no tiene permiso para responder en esta página (falta la revisión de la app de Meta o el permiso)",
@@ -64,16 +70,19 @@ class Messenger:
     def _enviar(self, destino: str, mensaje: dict) -> Envio:
         cuerpo = {"recipient": {"id": reglas.id_social(destino)}, "messaging_type": "RESPONSE", "message": mensaje}
         try:
+            # El token va en la cabecera, no en la dirección: si la conexión falla, el error
+            # (que queda en los registros de Render) trae la dirección completa (C-20).
             r = self._sesion.post(f"{GRAPH}/{self._version}/{self._pagina}/messages", json=cuerpo,
-                                  params={"access_token": self._token}, timeout=self._timeout)
+                                  headers={"Authorization": f"Bearer {self._token}"}, timeout=self._timeout)
         except requests.RequestException as e:
-            log.exception("No se pudo conectar con Meta para enviar a %s", reglas.ocultar_numero(destino))
+            log.error("No se pudo conectar con Meta para enviar a %s: %s", reglas.ocultar_numero(destino), e.__class__.__name__)
             return Envio(False, None, f"Sin conexión con Meta: {e.__class__.__name__}")
         if r.ok:
             return Envio(True)
         codigo, mensaje_error = error_de_meta(r)
-        log.error("Meta rechazo el envio a %s: %s %s", reglas.ocultar_numero(destino), codigo, mensaje_error)
-        return Envio(False, codigo, mensaje_error)
+        subcodigo = subcodigo_de_meta(r)
+        log.error("Meta rechazo el envio a %s: %s/%s %s", reglas.ocultar_numero(destino), codigo, subcodigo, mensaje_error)
+        return Envio(False, codigo, explicar_falla(codigo, subcodigo, mensaje_error))
 
     def enviar_texto(self, destino: str, texto: str) -> Envio:
         envio = Envio(False, None, "Mensaje vacío")
@@ -90,7 +99,12 @@ class Messenger:
         return envio
 
     def descargar(self, url: str, maximo: int = 5 * 1024 * 1024):
-        """Messenger e Instagram mandan la dirección del archivo directamente."""
+        """Messenger e Instagram mandan la dirección del archivo directamente.
+
+        Solo se baja de los servidores de Meta: así el bot nunca pide una dirección cualquiera.
+        """
+        if not es_de_meta(url):
+            return False, (None, "El archivo no viene de Meta.")
         try:
             r = self._sesion.get(url, timeout=self._timeout)
             if not r.ok:
@@ -235,8 +249,22 @@ class Conector:
         return False, "La app ya no está suscrita a la página. Vuelve a conectar en Canales."
 
 
-def explicar_falla(codigo) -> str:
-    return MOTIVOS_SOCIALES.get(codigo, f"Meta respondió con el código {codigo}")
+def explicar_falla(codigo, subcodigo=None, mensaje: str = "") -> str:
+    """El motivo en palabras simples: primero por subcódigo, después por código, si no el de Meta."""
+    for clave in (subcodigo, codigo):
+        if clave in MOTIVOS_SOCIALES:
+            return MOTIVOS_SOCIALES[clave]
+    return mensaje or f"Meta respondió con el código {codigo}"
+
+
+def es_de_meta(url: str) -> bool:
+    """True si la dirección es https y de un servidor de Meta (fbcdn.net, fbsbx.com, …)."""
+    try:
+        partes = urlsplit(url or "")
+    except ValueError:
+        return False
+    host = (partes.hostname or "").lower()
+    return partes.scheme == "https" and any(host == d or host.endswith("." + d) for d in DOMINIOS_DE_META)
 
 
 # ------------------------------------------------------------------ configuración guardada
@@ -253,6 +281,33 @@ def config_de(empresa: dict) -> dict:
     c.setdefault("candidatos", [])
     c.setdefault("pasos", [])
     return c
+
+
+def cuentas_de(empresa: dict) -> dict:
+    """De qué cuentas de Meta acepta avisos el webhook de esta empresa (aislamiento, C-20).
+
+    Si una misma app de Meta tiene otro número, otra página u otro Instagram (por ejemplo,
+    siendo Tech Provider), sus avisos llegan al mismo webhook y no son de esta empresa.
+    Un valor vacío quiere decir "todavía no configurado": no se filtra por ese canal.
+    """
+    c = config_de(empresa)
+    return {"whatsapp": str(empresa.get("phone_number_id") or ""), "messenger": str(c["pagina_id"] or ""),
+            "instagram": str(c["ig_id"] or "")}
+
+
+def canales_conectados(empresa: dict) -> list[str]:
+    """Los canales por los que el bot habló o puede hablar (para la privacidad y el borrado).
+
+    WhatsApp siempre; Messenger e Instagram si hay una página conectada, aunque estén apagados,
+    porque las conversaciones de antes siguen guardadas.
+    """
+    c = config_de(empresa)
+    conectados = ["whatsapp"]
+    if c["pagina_id"] and empresa.get("pagina_token_cif"):
+        conectados.append("messenger")
+        if c["ig_id"]:
+            conectados.append("instagram")
+    return conectados
 
 
 def canal_encendido(empresa: dict, canal: str) -> bool:

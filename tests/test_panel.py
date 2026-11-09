@@ -35,6 +35,32 @@ def test_RF14_contrasena_incorrecta_no_entra_y_se_bloquea_tras_5_intentos(web):
     assert "Demasiados intentos" in r.get_data(as_text=True)
 
 
+def test_RF14_el_bloqueo_no_se_salta_cambiando_x_forwarded_for(web):
+    """Dado un atacante que en cada intento manda otro X-Forwarded-For, cuando falla 5 veces, entonces
+    queda bloqueado igual (C-20). Así llega a Render: lo que manda el atacante va primero, después
+    su IP real y la de Cloudflare, y Cloudflare pone la real en CF-Connecting-IP."""
+    def render(falsa):
+        return {"X-Forwarded-For": f"{falsa}, 203.0.113.7, 104.22.17.40", "CF-Connecting-IP": "203.0.113.7"}
+
+    token = csrf_de(web.get("/panel/entrar"))
+    for i in range(5):
+        web.post("/panel/entrar", data={"csrf": token, "password": "mala"}, headers=render(f"10.0.0.{i}"))
+    r = web.post("/panel/entrar", data={"csrf": token, "password": PASSWORD}, headers=render("10.0.0.99"))
+    assert "Demasiados intentos" in r.get_data(as_text=True)
+
+
+def test_RF14_en_render_cuenta_la_ip_que_pone_cloudflare(web):
+    """En Render, Cloudflare pone la IP real en CF-Connecting-IP: el bloqueo es por persona, no para todos."""
+    token = csrf_de(web.get("/panel/entrar"))
+    for i in range(5):
+        web.post("/panel/entrar", data={"csrf": token, "password": "mala"},
+                 headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": f"10.0.0.{i}"})
+    bloqueado = web.post("/panel/entrar", data={"csrf": token, "password": PASSWORD}, headers={"CF-Connecting-IP": "203.0.113.7"})
+    otra_persona = web.post("/panel/entrar", data={"csrf": token, "password": PASSWORD}, headers={"CF-Connecting-IP": "198.51.100.20"})
+    assert "Demasiados intentos" in bloqueado.get_data(as_text=True)
+    assert otra_persona.status_code == 302
+
+
 def test_RF14_un_formulario_sin_csrf_se_rechaza(admin):
     web, _ = admin
     assert web.post("/panel/empresas", data={"nombre": "Sin token"}).status_code == 400

@@ -154,7 +154,9 @@ class Servicios:
                     self._almacen.agregar(eid, msg.numero, "assistant", texto, ahora)
                     self._almacen.marcar_actividad(eid, "respuesta", ahora)
                 else:
-                    self._almacen.registrar_evento(eid, "error", f"Meta no aceptó la respuesta (código {envio.codigo}).", ahora)
+                    # En Messenger e Instagram el motivo explica qué falta (revisión de la app, 24 horas, token)
+                    motivo = f": {envio.detalle}" if canal != "whatsapp" and envio.detalle else ""
+                    self._almacen.registrar_evento(eid, "error", f"Meta no aceptó la respuesta (código {envio.codigo}){motivo}.", ahora)
             if enviar_qr and self._url_base:
                 qr = reservas.cobro(empresa)["qr_id"]
                 envio = whatsapp.enviar_imagen(msg.numero, f"{self._url_base}/pago/{empresa['slug']}/qr?v={qr}", "QR para pagar el adelanto")
@@ -164,8 +166,10 @@ class Servicios:
             if pide_humano:
                 horas = float(empresa.get("pausa_horas") or 12)
                 self._almacen.pausar(eid, msg.numero, reglas.fin_de_pausa(ahora, horas))
-                origen = "" if canal == "whatsapp" else f" de {reglas.NOMBRES_CANAL[canal]}"
-                self._almacen.registrar_evento(eid, "derivado", f"Chat{origen} ...{msg.numero[-4:]} pasado a {empresa.get('dueno_nombre') or 'la dueña'}.", ahora)
+                # En Messenger e Instagram va la cuenta completa (fb:… / ig:…; no es un teléfono): es lo
+                # que el admin copia para borrar los datos si esa persona lo pide (BOT-RF-20, C-20).
+                quien = f"...{msg.numero[-4:]}" if canal == "whatsapp" else f"de {reglas.NOMBRES_CANAL[canal]} {msg.numero}"
+                self._almacen.registrar_evento(eid, "derivado", f"Chat {quien} pasado a {empresa.get('dueno_nombre') or 'la dueña'}.", ahora)
                 dueno = empresa.get("dueno_numero")
                 if dueno and dueno != msg.numero:
                     whatsapp.enviar_texto(dueno, AVISO_DUENO.format(cliente=reglas.etiqueta_contacto(msg.numero), horas=horas))

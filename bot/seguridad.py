@@ -32,7 +32,19 @@ def requiere_admin(vista):
 
 
 def ip_cliente() -> str:
-    return (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+    """La IP de quien se conecta, para el bloqueo por intentos (BOT-RF-14 y 21).
+
+    En Render, delante del servicio está Cloudflare, que escribe la IP real en
+    CF-Connecting-IP (y en True-Client-IP) y reemplaza lo que mande el navegador.
+    El primer valor de X-Forwarded-For NO sirve: Render conserva el que manda quien
+    hace la petición, así que cambiándolo en cada intento se saltaba el bloqueo (C-20, D-39).
+    Fuera de Render (en tu PC) se usa la dirección de la conexión.
+    """
+    for cabecera in ("CF-Connecting-IP", "True-Client-IP"):
+        valor = (request.headers.get(cabecera) or "").strip()
+        if valor:
+            return valor[:64]
+    return request.remote_addr or ""
 
 
 class Limitador:

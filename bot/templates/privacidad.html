@@ -4,19 +4,19 @@
 {% block contenido %}
 <article class="legal">
   <h1>Política de privacidad</h1>
-  <p class="suave">{{ empresa.nombre }} · Asistente de WhatsApp · Actualizada el 8 de noviembre de 2026</p>
+  <p class="suave">{{ empresa.nombre }} · Asistente de {{ canales_texto }} · Actualizada el 9 de noviembre de 2026</p>
 
   <h2>Quién te atiende</h2>
-  <p>{{ empresa.nombre }} usa un asistente automático para responder los mensajes que recibe por WhatsApp. Cuando hace falta, la conversación la sigue {{ empresa.dueno_nombre or 'una persona del negocio' }}.</p>
+  <p>{{ empresa.nombre }} usa un asistente automático para responder los mensajes que recibe por {{ canales_texto }}. Cuando hace falta, la conversación la sigue {{ empresa.dueno_nombre or 'una persona del negocio' }}.</p>
 
   <h2>Qué datos usamos</h2>
-  <p>Tu número de WhatsApp, los mensajes de texto que nos envías y las respuestas que te damos. No pedimos ni guardamos contraseñas ni datos de tarjetas. Los audios, fotos y otros archivos no se procesan.</p>
+  <p>Tu número de WhatsApp{% if con_redes %} o, si nos escribes por {{ canales[1:] | join(' o ') }}, el identificador que Meta le da a tu cuenta para conversar con nosotros{% endif %}, los mensajes de texto que nos envías, las respuestas que te damos y, si reservas una cita, tu nombre y los datos de la cita. No pedimos ni guardamos contraseñas ni datos de tarjetas. Los audios y los videos no se procesan. Si tienes una reserva por pagar y nos mandas por WhatsApp la foto o el PDF del comprobante, lo guardamos para confirmar el pago.</p>
 
   <h2>Para qué los usamos</h2>
-  <p>Solo para responder tus consultas sobre el negocio, recordar la conversación mientras te atendemos y pasarla a una persona cuando lo necesitas. No los vendemos ni los usamos para publicidad.</p>
+  <p>Solo para responder tus consultas sobre el negocio, agendar tus citas, recordar la conversación mientras te atendemos y pasarla a una persona cuando lo necesitas. No los vendemos ni los usamos para publicidad.</p>
 
   <h2>Quién más los procesa</h2>
-  <p>Meta (WhatsApp) transmite los mensajes. Anthropic (Claude) procesa el texto de la conversación para redactar las respuestas. Las conversaciones se guardan en una base de datos en Estados Unidos (Neon) y el servicio funciona en Render. Cada uno trata los datos según sus propias condiciones.</p>
+  <p>Meta ({{ canales_texto }}) transmite los mensajes. Anthropic (Claude) procesa el texto de la conversación para redactar las respuestas. Las conversaciones se guardan en una base de datos en Estados Unidos (Neon) y el servicio funciona en Render. Cada uno trata los datos según sus propias condiciones.</p>
 
   <h2>Cuánto tiempo los guardamos</h2>
   <p>Hasta que pidas que se borren, o hasta que el negocio deje de usar este asistente.</p>

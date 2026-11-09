@@ -237,11 +237,11 @@
 <section class="seccion" id="datos">
   <details>
     <summary>Borrar los datos de un cliente</summary>
-    <p class="suave chico">Si un cliente pide que borren sus datos, escribe su número: se borra su conversación guardada y su pausa. Meta y WhatsApp guardan sus propias copias según sus reglas.</p>
-    <form method="post" action="{{ url_for('panel.borrar_cliente', eid=e.id) }}" data-confirmar="¿Borrar la conversación guardada de ese número? No se puede deshacer.">
+    <p class="suave chico">Si un cliente pide que borren sus datos, escribe su número: se borra su conversación guardada y su pausa. Si escribió por Messenger o Instagram, copia su cuenta (empieza con <code>fb:</code> o <code>ig:</code>) del aviso «pasado a…» de la Actividad. Meta guarda sus propias copias según sus reglas.</p>
+    <form method="post" action="{{ url_for('panel.borrar_cliente', eid=e.id) }}" data-confirmar="¿Borrar la conversación guardada de ese cliente? No se puede deshacer.">
       <input type="hidden" name="csrf" value="{{ csrf() }}">
-      <label for="numero-borrar">Número del cliente</label>
-      <input id="numero-borrar" name="numero" type="tel" required placeholder="591 70000000">
+      <label for="numero-borrar">Número o cuenta del cliente</label>
+      <input id="numero-borrar" name="numero" type="text" autocomplete="off" required placeholder="591 70000000 o fb:1234…">
       <div class="acciones"><button class="boton" type="submit">Borrar sus datos</button></div>
     </form>
   </details>

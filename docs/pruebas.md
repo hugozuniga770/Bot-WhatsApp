@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 08/11/2026 · Versión: v3.1.1
+- Fecha: 09/11/2026 · Versión: v3.3.1
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -243,13 +243,34 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 
 **Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.
 
+## v3.3.1: revisión de seguridad de la v3.3 (09/11/2026)
+
+| Entorno | Resultado |
+|---|---|
+| v3.3 tal como está en GitHub (commit `2293994`) · GitHub Actions #12 | **165 passed**, 0 saltadas |
+| v3.3 · entorno de armado, con PostgreSQL 16 real | **165 passed** (punto de partida) |
+| v3.3.1 · entorno de armado, con PostgreSQL 16 real | **175 passed**, 0 saltadas (10 pruebas nuevas y 1 corregida) |
+| Las pruebas nuevas contra el código de la v3.3 | **11 fallan**: cada una muestra un problema real que la v3.3.1 corrige |
+| v3.3.1 · GitHub Actions | **Pendiente:** confirmar al subir |
+
+| Requisito | Tests nuevos o cambiados |
+|---|---|
+| BOT-RF-12 | `test_RF12_el_webhook_ignora_los_mensajes_de_otra_pagina_u_otro_instagram`, `test_RF12_reglas_separan_los_avisos_de_cada_cuenta` (`test_canales.py`) |
+| BOT-RF-14 | `test_RF14_el_bloqueo_no_se_salta_cambiando_x_forwarded_for`, `test_RF14_en_render_cuenta_la_ip_que_pone_cloudflare` (`test_panel.py`) |
+| BOT-RF-20 | `test_RF20_las_paginas_legales_nombran_messenger_e_instagram_si_estan_conectados`, `test_RF20_el_admin_borra_un_chat_de_messenger_con_la_cuenta_del_aviso` (`test_canales.py`) |
+| BOT-RF-33 | `test_RF33_si_falla_la_conexion_el_token_de_la_pagina_no_queda_en_los_registros`, `test_RF33_la_ventana_de_24_horas_se_explica_bien_y_no_como_falta_de_permiso`, `test_RF33_si_meta_no_acepta_la_respuesta_la_actividad_dice_por_que`, `test_RF33_solo_se_bajan_archivos_de_los_servidores_de_meta`; cambiada: `test_RF33_mensajeria_manda_cada_destino_por_su_canal_y_parte_los_textos_largos` (el token va en la cabecera) |
+
+**Revisado y sin cambios:** firma del webhook (`X-Hub-Signature-256` con el App Secret de cada empresa, comparación de tiempo constante, sin secreto se rechaza); llaves cifradas con Fernet y la `CLAVE_MAESTRA`, enmascaradas en pantalla; CSRF en todos los formularios del panel, del negocio y del alta; sesiones `HttpOnly`, `SameSite=Lax` y `Secure` en Render; cabeceras de seguridad (CSP, `X-Frame-Options`); aislamiento del panel del negocio (cada consulta usa la empresa del usuario); archivos servidos por su tipo real y aislados; SQL siempre con parámetros.
+
+**Queda anotado, sin cambiar:** las llamadas de la pantalla Canales a Meta (`debug_token`, páginas, suscripciones) siguen mandando los tokens como parámetro, como pide la API para `debug_token`; no se registran si fallan. El candidato de prueba de Messenger e Instagram se guarda leyendo la empresa al llegar el mensaje: si justo en ese momento se cambia algo en Canales, puede perderse ese cambio (es raro y se vuelve a hacer).
+
 ## v3.3: Messenger e Instagram (09/11/2026)
 
 | Entorno | Resultado |
 |---|---|
 | v3.3 · entorno de armado, con PostgreSQL 16 real | **165 passed**, 0 saltadas (18 nuevas en `tests/test_canales.py`) |
 | v3.3 · pantalla Canales a 390 px de ancho (Playwright) | Sin desplazamiento horizontal |
-| v3.3 · GitHub Actions | **Pendiente:** confirmar al subir |
+| v3.3 · GitHub Actions #12 (commit `2293994`) | **165 passed**, 0 saltadas (09/11/2026) |
 
 | Requisito | Tests |
 |---|---|

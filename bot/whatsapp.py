@@ -21,13 +21,32 @@ class Envio:
         return self.ok
 
 
-def error_de_meta(r) -> tuple[int | None, str]:
-    """Saca el codigo y el mensaje del JSON de error de Meta."""
+def _error_json(r) -> dict | None:
+    """El objeto "error" del JSON de Meta, o None si la respuesta no trae uno."""
     try:
-        error = r.json().get("error", {})
-        return error.get("code"), error.get("message", "")
+        datos = r.json()
     except ValueError:
-        return None, r.text[:300]
+        return None
+    error = datos.get("error") if isinstance(datos, dict) else None
+    return error if isinstance(error, dict) else None
+
+
+def error_de_meta(r) -> tuple[int | None, str]:
+    """Saca el codigo y el mensaje del JSON de error de Meta.
+
+    Si Meta (o un proxy en el medio) responde algo que no es el JSON de siempre, no se cae:
+    devuelve el comienzo del texto.
+    """
+    error = _error_json(r)
+    if error is None:
+        return None, (getattr(r, "text", "") or "")[:300]
+    return error.get("code"), str(error.get("message", ""))
+
+
+def subcodigo_de_meta(r) -> int | None:
+    """El `error_subcode` de Meta (por ejemplo 2018278: fuera de la ventana de 24 horas)."""
+    sub = (_error_json(r) or {}).get("error_subcode")
+    return sub if isinstance(sub, int) else None
 
 
 class WhatsApp:
