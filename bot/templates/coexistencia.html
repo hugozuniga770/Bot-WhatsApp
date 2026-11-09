@@ -4,7 +4,7 @@
 {% block contenido %}
 <p><a href="{{ url_for('panel.detalle', eid=e.id) }}">← {{ e.nombre }}</a></p>
 <h1>WhatsApp Business del negocio</h1>
-<p class="suave">Con la <strong>coexistencia</strong>, el bot responde en el número de WhatsApp Business del negocio y {{ e.dueno_nombre or 'la dueña o el dueño' }} sigue usando la app en su celular, con sus chats. Cuando responde a mano desde el celular, el bot se calla en ese chat por {{ e.pausa_horas or 12 }} h.</p>
+<p class="suave">Con la <strong>coexistencia</strong>, el bot responde en el número de WhatsApp Business del negocio y {{ e.dueno_nombre or 'la dueña o el dueño' }} sigue usando la app en su celular, con sus chats. Cuando responde a mano desde el celular, el bot se calla en ese chat por {{ "%g" | format(e.pausa_horas or 12) }} h.</p>
 
 <section class="seccion" aria-labelledby="t-estado">
   <h2 id="t-estado">Cómo está</h2>

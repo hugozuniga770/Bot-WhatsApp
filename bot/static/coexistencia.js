@@ -1,8 +1,11 @@
-// Coexistencia (v3.4): abre el registro de Meta para el WhatsApp Business del negocio.
+// Coexistencia (v3.4.1): abre el registro de Meta para el WhatsApp Business del negocio.
 // Documentación de Meta, «Onboarding WhatsApp Business app users» (09/11/2026):
 // FB.login con featureType "whatsapp_business_app_onboarding" y sessionInfoVersion "3".
-// Meta avisa por postMessage (WA_EMBEDDED_SIGNUP / FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING)
-// con el id de la cuenta de WhatsApp, y FB.login devuelve un código que el panel cambia por el token.
+//
+// El código que devuelve FB.login vence en segundos, así que se manda al bot apenas llega
+// (esperando como mucho 3 s el aviso de Meta con el id de la cuenta de WhatsApp). Si ese aviso
+// no llega, el bot busca la cuenta con el token (C-22). Todo lo que avisa Meta se muestra en
+// pantalla para poder ver qué pasó.
 (() => {
   const caja = document.getElementById("coexistencia");
   if (!caja) return;
@@ -13,6 +16,8 @@
   let codigo = null;
   let sesion = null;
   let enviado = false;
+  let espera = null;
+  const eventos = [];
 
   const decir = (texto) => { estado.textContent = texto; };
 
@@ -35,20 +40,22 @@
     }));
   }
 
-  async function terminar() {
-    if (enviado || !codigo || !sesion) return;
+  async function enviar() {
+    if (enviado || !codigo) return;
     enviado = true;
+    clearTimeout(espera);
     decir("Conectando con el bot… no cierres esta página.");
     try {
       const r = await fetch(finalizar, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF": csrf, Accept: "application/json" },
-        body: JSON.stringify({ code: codigo, waba_id: sesion.waba_id || "", phone_number_id: sesion.phone_number_id || "" }),
+        body: JSON.stringify({ code: codigo, waba_id: (sesion && sesion.waba_id) || "",
+                               phone_number_id: (sesion && sesion.phone_number_id) || "", eventos }),
       });
       const datos = await r.json();
       decir(datos.mensaje || "Listo.");
       mostrarPasos(datos.pasos);
-      if (datos.ok) setTimeout(() => location.reload(), 4000);
+      if (datos.ok) setTimeout(() => location.reload(), 5000);
       else boton.disabled = false;
     } catch {
       decir("No se pudo avisar al bot. Recarga la página y mira la Actividad.");
@@ -63,15 +70,15 @@
     let datos;
     try { datos = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data; } catch { return; }
     if (!datos || datos.type !== "WA_EMBEDDED_SIGNUP") return;
-    if (datos.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" || datos.event === "FINISH") {
+    const nombre = String(datos.event || "sin nombre");
+    eventos.push(nombre + (datos.data && datos.data.current_step ? ` (${datos.data.current_step})` : ""));
+    if (nombre.startsWith("FINISH")) {
       sesion = datos.data || {};
-      terminar();
-    } else if (datos.event === "CANCEL") {
+      if (codigo) enviar();
+    } else if (nombre === "CANCEL") {
       decir("Se cerró el registro de Meta antes de terminar" + (datos.data?.current_step ? ` (paso: ${datos.data.current_step})` : "") + ". No se cambió nada.");
-      boton.disabled = false;
-    } else if (datos.event === "ERROR") {
+    } else if (nombre === "ERROR") {
       decir("Meta mostró un error: " + (datos.data?.error_message || "sin detalle") + ". No se cambió nada.");
-      boton.disabled = false;
     }
   });
 
@@ -94,7 +101,7 @@
   boton.addEventListener("click", async () => {
     if (!appId || !configId) return;
     boton.disabled = true;
-    codigo = null; sesion = null; enviado = false;
+    codigo = null; sesion = null; enviado = false; eventos.length = 0;
     lista.replaceChildren();
     decir("Abriendo el registro de Meta…");
     try {
@@ -107,11 +114,13 @@
     window.FB.login((respuesta) => {
       if (respuesta.authResponse && respuesta.authResponse.code) {
         codigo = respuesta.authResponse.code;
-        decir("Meta terminó. Esperando los datos del número…");
-        terminar();
-        setTimeout(() => { if (!enviado) { decir("Meta no mandó los datos del número. Vuelve a intentar."); boton.disabled = false; } }, 20000);
+        if (sesion) enviar();
+        else {
+          decir("Meta terminó. Conectando…");
+          espera = setTimeout(enviar, 3000);  // no se espera más: el código vence rápido
+        }
       } else {
-        decir("Se cerró el registro de Meta sin terminar. No se cambió nada.");
+        decir("Se cerró el registro de Meta sin terminar" + (eventos.length ? ` (Meta avisó: ${eventos.join(", ")})` : "") + ". No se cambió nada.");
         boton.disabled = false;
       }
     }, {

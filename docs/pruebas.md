@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 09/11/2026 · Versión: v3.4
+- Fecha: 09/11/2026 · Versión: v3.4.1
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -243,6 +243,18 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 
 **Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.
 
+## v3.4.1: la conexión no depende del aviso de Meta (09/11/2026)
+
+| Entorno | Resultado |
+|---|---|
+| v3.4 · GitHub Actions #14 (commit `f7fa0fe`) | **189 passed**, 0 saltadas |
+| v3.4.1 · entorno de armado, con PostgreSQL 16 real | **192 passed**, 0 saltadas (3 nuevas) |
+| v3.4.1 · GitHub Actions | **Pendiente:** confirmar al subir |
+
+| Requisito | Tests nuevos (`test_coexistencia.py`) |
+|---|---|
+| BOT-RF-36 | `test_RF36_si_meta_no_manda_el_id_de_la_cuenta_el_bot_la_busca_con_el_token`, `test_RF36_sin_cuenta_en_el_token_no_cambia_nada_y_la_actividad_dice_lo_que_aviso_meta`, `test_RF36_registro_lee_las_cuentas_del_token` |
+
 ## v3.4: coexistencia del número del negocio (09/11/2026)
 
 | Entorno | Resultado |
@@ -250,7 +262,7 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 | v3.3.1 · GitHub Actions #13 (commit `5c40504`) | **175 passed**, 0 saltadas |
 | v3.4 · entorno de armado, con PostgreSQL 16 real | **189 passed**, 0 saltadas (14 nuevas en `tests/test_coexistencia.py`) |
 | v3.4 · pantalla WhatsApp Business del negocio a 390 px (Playwright) | Sin desplazamiento horizontal, sin errores en la consola |
-| v3.4 · GitHub Actions | **Pendiente:** confirmar al subir |
+| v3.4 · GitHub Actions #14 (commit `f7fa0fe`) | **189 passed**, 0 saltadas (09/11/2026) |
 
 | Requisito | Tests (`test_coexistencia.py`) |
 |---|---|

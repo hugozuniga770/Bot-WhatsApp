@@ -644,21 +644,44 @@ def coexistencia_finalizar(eid):
     codigo = str(datos.get("code") or "").strip()
     waba_id = str(datos.get("waba_id") or "").strip()
     pedido_numero = str(datos.get("phone_number_id") or "").strip()
-    if not codigo or len(codigo) > 2000 or not NUMERO_ID.fullmatch(waba_id) or (pedido_numero and not NUMERO_ID.fullmatch(pedido_numero)):
+    # v3.4.1: el id de la cuenta de WhatsApp es opcional. Si Meta no mandó su mensaje (pasó el
+    # 09/11/2026), se busca con el token: debug_token dice a qué cuentas da acceso (C-22).
+    if not codigo or len(codigo) > 2000 or (waba_id and not NUMERO_ID.fullmatch(waba_id)) \
+            or (pedido_numero and not NUMERO_ID.fullmatch(pedido_numero)):
         return jsonify({"ok": False, "mensaje": "Meta no devolvió los datos del registro. Vuelve a intentarlo."}), 400
+    eventos = [str(e)[:60] for e in (datos.get("eventos") or [])[:10] if isinstance(e, str)]
 
     pasos = []
 
     def fallo(clave, titulo, detalle):
         pasos.append({"clave": clave, "titulo": titulo, "estado": "falla", "detalle": detalle})
-        c.almacen.registrar_evento(eid, "error", f"Coexistencia: no se pudo conectar ({titulo.lower()}). No se cambió nada.", c.ahora())
+        meta_dijo = f" Meta avisó: {', '.join(eventos)}." if eventos else " Meta no mandó avisos del registro."
+        c.almacen.registrar_evento(eid, "error", f"Coexistencia: no se pudo conectar ({titulo.lower()}: {detalle}).{meta_dijo} "
+                                   "No se cambió nada.", c.ahora())
         return jsonify({"ok": False, "mensaje": f"No se pudo conectar: {detalle} No se cambió nada en el bot.", "pasos": pasos})
 
     secretos = E.secretos_de(empresa, c.cifrador)
-    ok, token = c.registro.canjear_codigo(empresa.get("meta_app_id", ""), secretos["meta_app_secret"], codigo)
+    app_id = empresa.get("meta_app_id", "")
+    ok, token = c.registro.canjear_codigo(app_id, secretos["meta_app_secret"], codigo)
     if not ok:
         return fallo("codigo", "Código del registro", token)
     pasos.append({"clave": "codigo", "titulo": "Código del registro", "estado": "ok", "detalle": "Meta dio el token del negocio."})
+
+    if not waba_id:
+        ok, wabas = c.registro.wabas_del_token(app_id, secretos["meta_app_secret"], token)
+        if not ok or not wabas:
+            return fallo("waba", "Cuenta de WhatsApp", wabas if not ok else
+                         "El registro no dio acceso a ninguna cuenta de WhatsApp. ¿Se terminó el paso del QR?")
+        if len(wabas) > 1:
+            con_app = []
+            for candidata in wabas:
+                ok_n, nums = c.registro.numeros_de(candidata, token)
+                if ok_n and any(n.get("is_on_biz_app") for n in nums):
+                    con_app.append(candidata)
+            if len(con_app) != 1:
+                return fallo("waba", "Cuenta de WhatsApp", "El registro dio acceso a varias cuentas de WhatsApp y no se sabe cuál es la del celular.")
+            wabas = con_app
+        waba_id = wabas[0]
 
     ok, numeros = c.registro.numeros_de(waba_id, token)
     numero = X.elegir_numero(numeros, pedido_numero) if ok else None

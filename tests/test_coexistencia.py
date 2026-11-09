@@ -148,6 +148,10 @@ class RegistroFalso:
         self.llamadas.append(("codigo", codigo))
         return (True, TOKEN_NEGOCIO) if self.codigo_ok else (False, "Meta respondió: el código venció")
 
+    def wabas_del_token(self, app_id, app_secret, token):
+        self.llamadas.append(("wabas", token))
+        return True, list(getattr(self, "wabas", [WABA]))
+
     def numeros_de(self, waba_id, token):
         self.llamadas.append(("numeros", waba_id))
         return True, [{"id": NUMERO_REAL, "display_phone_number": "+591 75000000", "verified_name": "Tienda", "is_on_biz_app": self.en_la_app}]
@@ -274,3 +278,38 @@ def test_RF36_el_id_de_la_configuracion_son_solo_numeros(admin, almacen, con_lla
     assert "solo números" in r.get_data(as_text=True)
     web.post(f"/panel/empresas/{con_llaves['id']}/coexistencia/configuracion", data={"csrf": csrf, "config_id": " 1234 5678 "})
     assert almacen.empresa(con_llaves["id"])["coexistencia"]["config_id"] == "12345678"
+
+
+# ------------------------------------------------------------------ v3.4.1 (C-22)
+def test_RF36_si_meta_no_manda_el_id_de_la_cuenta_el_bot_la_busca_con_el_token(app, admin, almacen, con_llaves):
+    """El 09/11/2026 la ventana de Meta devolvió el código pero no el aviso con la cuenta de WhatsApp."""
+    registro = app.extensions["bot"].registro = RegistroFalso()
+    app.extensions["bot"].conector = ConectorFalso()
+    web, csrf = admin
+    datos = web.post(f"/panel/empresas/{con_llaves['id']}/coexistencia/finalizar", json={"code": "CODIGO", "waba_id": ""},
+                     headers={"X-CSRF": csrf}).get_json()
+    assert datos["ok"], datos
+    assert ("wabas", TOKEN_NEGOCIO) in registro.llamadas and ("numeros", WABA) in registro.llamadas
+    assert almacen.empresa(con_llaves["id"])["coexistencia"]["waba_id"] == WABA
+
+
+def test_RF36_sin_cuenta_en_el_token_no_cambia_nada_y_la_actividad_dice_lo_que_aviso_meta(app, admin, almacen, con_llaves):
+    registro = RegistroFalso()
+    registro.wabas = []
+    app.extensions["bot"].registro = registro
+    app.extensions["bot"].conector = ConectorFalso()
+    web, csrf = admin
+    datos = web.post(f"/panel/empresas/{con_llaves['id']}/coexistencia/finalizar",
+                     json={"code": "CODIGO", "eventos": ["CANCEL (QR_CODE)"]}, headers={"X-CSRF": csrf}).get_json()
+    assert not datos["ok"] and "QR" in datos["mensaje"]
+    assert almacen.empresa(con_llaves["id"])["phone_number_id"] == NUMERO_PRUEBA
+    assert "Meta avisó: CANCEL (QR_CODE)" in almacen.eventos(con_llaves["id"], 1)[0]["detalle"]
+
+
+def test_RF36_registro_lee_las_cuentas_del_token():
+    sesion = SesionFalsa({"debug_token": Respuesta({"data": {"granular_scopes": [
+        {"scope": "business_management"}, {"scope": "whatsapp_business_management", "target_ids": [WABA]},
+        {"scope": "whatsapp_business_messaging", "target_ids": [WABA]}]}})})
+    assert X.Registro("v23.0", sesion=sesion).wabas_del_token("123456", SECRETO_META, TOKEN_NEGOCIO) == (True, [WABA])
+    metodo, url, kw = sesion.pedidos[0]
+    assert kw["params"]["access_token"] == f"123456|{SECRETO_META}" and kw["params"]["input_token"] == TOKEN_NEGOCIO

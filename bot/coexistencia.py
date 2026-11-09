@@ -127,6 +127,20 @@ class Registro:
         token = datos.get("access_token") or ""
         return (True, token) if token else (False, "Meta no devolvió el token del negocio.")
 
+    def wabas_del_token(self, app_id: str, app_secret: str, token: str):
+        """Las cuentas de WhatsApp a las que da acceso el token del negocio (granular_scopes de debug_token).
+
+        Sirve cuando la ventana de Meta no mandó el id de la cuenta (v3.4.1, C-22).
+        """
+        ok, datos = self._pedir("GET", "debug_token", params={"input_token": token, "access_token": f"{app_id}|{app_secret}"})
+        if not ok:
+            return False, datos
+        ids = []
+        for alcance in (datos.get("data") or {}).get("granular_scopes") or []:
+            if alcance.get("scope") in ("whatsapp_business_management", "whatsapp_business_messaging"):
+                ids += [str(i) for i in alcance.get("target_ids") or [] if str(i) not in ids]
+        return True, ids
+
     def numeros_de(self, waba_id: str, token: str):
         ok, datos = self._pedir("GET", f"{waba_id}/phone_numbers", token, params={
             "fields": "id,display_phone_number,verified_name,is_on_biz_app,platform_type"})
