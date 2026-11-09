@@ -697,6 +697,11 @@ def coexistencia_finalizar(eid):
     if not info.get("is_on_biz_app"):
         # Si el número no está en la app del celular, esto no es coexistencia: no se toca nada.
         return fallo("numero", "Número de WhatsApp", "Ese número no está en la app WhatsApp Business del celular.")
+    if info.get("platform_type") != "CLOUD_API":
+        # Meta: tras la coexistencia, is_on_biz_app = true y platform_type = CLOUD_API. Si no, el
+        # registro con QR no se completó y el bot no podría usar el número (v3.4.3, C-24).
+        return fallo("numero", "Número de WhatsApp", "El número sigue solo en la app del celular: el paso del QR no se completó "
+                     f"(Meta dice platform_type = {info.get('platform_type') or 'vacío'}).")
     pasos.append({"clave": "numero", "titulo": "Número de WhatsApp", "estado": "ok",
                   "detalle": f"{info.get('display_phone_number') or numero.get('display_phone_number', '')} "
                              f"({info.get('verified_name') or numero.get('verified_name', '')}), sigue en la app del celular."})

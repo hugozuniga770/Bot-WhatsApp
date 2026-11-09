@@ -341,3 +341,21 @@ def test_RF36_si_la_ventana_se_cierra_sin_registro_el_panel_lo_explica(app, admi
                      headers={"X-CSRF": csrf}).get_json()
     assert not datos["ok"] and "se cerró sin mostrar el registro" in datos["mensaje"] and "WhatsApp Cloud API" in datos["mensaje"]
     assert almacen.empresa(con_llaves["id"])["phone_number_id"] == NUMERO_PRUEBA
+
+
+# ------------------------------------------------------------------ v3.4.3 (C-24)
+def test_RF36_sin_el_paso_del_qr_el_numero_no_esta_en_la_api_y_no_se_toca_nada(app, admin, almacen, con_llaves):
+    """Si la ventana se cerró sin el QR, el número sigue solo en la app (platform_type distinto de CLOUD_API)."""
+    class SinQR(RegistroFalso):
+        def numero(self, pnid, token):
+            self.llamadas.append(("numero", pnid))
+            return True, {"id": pnid, "display_phone_number": "+591 75000000", "is_on_biz_app": True, "platform_type": "NOT_APPLICABLE"}
+
+    registro = app.extensions["bot"].registro = SinQR()
+    app.extensions["bot"].conector = ConectorFalso()
+    web, csrf = admin
+    datos = web.post(f"/panel/empresas/{con_llaves['id']}/coexistencia/finalizar", json={"code": "C", "waba_id": WABA},
+                     headers={"X-CSRF": csrf}).get_json()
+    assert not datos["ok"] and "QR no se completó" in datos["mensaje"]
+    assert not any(c[0] in ("waba", "sync") for c in registro.llamadas)
+    assert almacen.empresa(con_llaves["id"])["phone_number_id"] == NUMERO_PRUEBA
