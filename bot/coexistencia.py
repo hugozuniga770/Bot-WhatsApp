@@ -120,8 +120,12 @@ class Registro:
         """El código del registro se cambia por el token del negocio (vale una sola vez y por poco tiempo)."""
         if not (app_id and app_secret and codigo):
             return False, "Faltan el App ID, el App Secret o el código del registro."
-        ok, datos = self._pedir("GET", "oauth/access_token",
-                                params={"client_id": app_id, "client_secret": app_secret, "code": codigo})
+        params = {"client_id": app_id, "client_secret": app_secret, "code": codigo}
+        ok, datos = self._pedir("GET", "oauth/access_token", params=params)
+        if not ok and "redirect_uri" in str(datos):
+            # Un código del SDK de JavaScript se canjea con redirect_uri vacío (así lo hacen los
+            # SDK oficiales). Si Meta lo pide, se reintenta una vez (v3.4.2, C-23).
+            ok, datos = self._pedir("GET", "oauth/access_token", params={**params, "redirect_uri": ""})
         if not ok:
             return False, datos
         token = datos.get("access_token") or ""

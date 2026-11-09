@@ -313,3 +313,31 @@ def test_RF36_registro_lee_las_cuentas_del_token():
     assert X.Registro("v23.0", sesion=sesion).wabas_del_token("123456", SECRETO_META, TOKEN_NEGOCIO) == (True, [WABA])
     metodo, url, kw = sesion.pedidos[0]
     assert kw["params"]["access_token"] == f"123456|{SECRETO_META}" and kw["params"]["input_token"] == TOKEN_NEGOCIO
+
+
+# ------------------------------------------------------------------ v3.4.2 (C-23)
+def test_RF36_si_meta_pide_redirect_uri_se_reintenta_con_redirect_uri_vacio():
+    """09/11/2026: «Error validating verification code. Please make sure your redirect_uri is identical…»"""
+    class SesionRedirect(SesionFalsa):
+        def request(self, metodo, url, **kw):
+            self.pedidos.append((metodo, url, kw))
+            if "redirect_uri" not in kw.get("params", {}):
+                return Respuesta({"error": {"code": 100, "error_subcode": 36008, "message":
+                                            "Error validating verification code. Please make sure your redirect_uri is identical"}}, ok=False)
+            return Respuesta({"access_token": TOKEN_NEGOCIO})
+
+    sesion = SesionRedirect({})
+    assert X.Registro("v23.0", sesion=sesion).canjear_codigo("123456", SECRETO_META, "CODIGO") == (True, TOKEN_NEGOCIO)
+    assert len(sesion.pedidos) == 2 and sesion.pedidos[1][2]["params"]["redirect_uri"] == ""
+
+
+def test_RF36_si_la_ventana_se_cierra_sin_registro_el_panel_lo_explica(app, admin, almacen, con_llaves):
+    registro = RegistroFalso()
+    registro.wabas = []
+    app.extensions["bot"].registro = registro
+    app.extensions["bot"].conector = ConectorFalso()
+    web, csrf = admin
+    datos = web.post(f"/panel/empresas/{con_llaves['id']}/coexistencia/finalizar", json={"code": "CODIGO"},
+                     headers={"X-CSRF": csrf}).get_json()
+    assert not datos["ok"] and "se cerró sin mostrar el registro" in datos["mensaje"] and "WhatsApp Cloud API" in datos["mensaje"]
+    assert almacen.empresa(con_llaves["id"])["phone_number_id"] == NUMERO_PRUEBA

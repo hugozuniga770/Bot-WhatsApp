@@ -1,4 +1,4 @@
-// Coexistencia (v3.4.1): abre el registro de Meta para el WhatsApp Business del negocio.
+// Coexistencia (v3.4.2): abre el registro de Meta para el WhatsApp Business del negocio.
 // Documentación de Meta, «Onboarding WhatsApp Business app users» (09/11/2026):
 // FB.login con featureType "whatsapp_business_app_onboarding" y sessionInfoVersion "3".
 //
@@ -71,12 +71,17 @@
     try { datos = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data; } catch { return; }
     if (!datos || datos.type !== "WA_EMBEDDED_SIGNUP") return;
     const nombre = String(datos.event || "sin nombre");
-    eventos.push(nombre + (datos.data && datos.data.current_step ? ` (${datos.data.current_step})` : ""));
+    const d = datos.data || {};
+    // Meta avisa los errores como CANCEL con error_message (documentación de implementación, 09/11/2026)
+    const detalle = d.error_message ? `${d.error_code || ""} ${d.error_message}`.trim() : (d.current_step || "");
+    eventos.push(nombre + (detalle ? ` (${String(detalle).slice(0, 120)})` : ""));
     if (nombre.startsWith("FINISH")) {
-      sesion = datos.data || {};
+      sesion = d;
       if (codigo) enviar();
+    } else if (nombre === "CANCEL" && d.error_message) {
+      decir("Meta mostró un error: " + d.error_message + ". No se cambió nada.");
     } else if (nombre === "CANCEL") {
-      decir("Se cerró el registro de Meta antes de terminar" + (datos.data?.current_step ? ` (paso: ${datos.data.current_step})` : "") + ". No se cambió nada.");
+      decir("Se cerró el registro de Meta antes de terminar" + (d.current_step ? ` (paso: ${d.current_step})` : "") + ". No se cambió nada.");
     } else if (nombre === "ERROR") {
       decir("Meta mostró un error: " + (datos.data?.error_message || "sin detalle") + ". No se cambió nada.");
     }
@@ -98,26 +103,31 @@
     });
   }
 
-  boton.addEventListener("click", async () => {
+  // El SDK se carga al abrir la página: así la ventana de Meta se abre en el mismo toque y
+  // Chrome no la bloquea como ventana emergente (v3.4.2, C-23).
+  let sdkListo = false;
+  if (appId && configId) {
+    cargarSdk().then(() => { sdkListo = true; }).catch(() => decir("No se pudo cargar el registro de Meta. Revisa la conexión y recarga la página."));
+  }
+
+  boton.addEventListener("click", () => {
     if (!appId || !configId) return;
+    if (!sdkListo || !window.FB) {
+      decir("Todavía se está cargando el registro de Meta. Espera unos segundos y vuelve a tocar.");
+      return;
+    }
     boton.disabled = true;
     codigo = null; sesion = null; enviado = false; eventos.length = 0;
     lista.replaceChildren();
-    decir("Abriendo el registro de Meta…");
-    try {
-      await cargarSdk();
-    } catch {
-      decir("No se pudo cargar el registro de Meta. Revisa la conexión y vuelve a intentar.");
-      boton.disabled = false;
-      return;
-    }
+    decir("Se abrió la ventana de Meta. Si no la ves, búscala detrás de esta (Alt+Tab).");
     window.FB.login((respuesta) => {
       if (respuesta.authResponse && respuesta.authResponse.code) {
         codigo = respuesta.authResponse.code;
         if (sesion) enviar();
         else {
-          decir("Meta terminó. Conectando…");
-          espera = setTimeout(enviar, 3000);  // no se espera más: el código vence rápido
+          decir(eventos.length ? "Meta terminó. Conectando…" :
+                "Meta devolvió el código sin mostrar el registro. Igual se intenta conectar…");
+          espera = setTimeout(enviar, 3000);  // no se espera más: el código vence a los 30 s
         }
       } else {
         decir("Se cerró el registro de Meta sin terminar" + (eventos.length ? ` (Meta avisó: ${eventos.join(", ")})` : "") + ". No se cambió nada.");

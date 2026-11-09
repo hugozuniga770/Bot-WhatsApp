@@ -1,7 +1,7 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.4.1
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.4.2
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
 - Estado al 09/11/2026 (cierre): v3.4 en línea (CI #14, 189 pruebas). App registrada como **Tech Provider**; configuración del registro de WhatsApp creada (`29513253088365817`, token de 60 días) y dominio del bot permitido para el SDK. El primer intento de conectar el 75013150 no llegó al bot: Meta devolvió el código pero no el aviso con la cuenta de WhatsApp. La **v3.4.1** manda el código apenas llega, busca la cuenta con el token y muestra lo que avisó Meta (C-22). 192 pruebas.
 - Estado al 09/11/2026 (noche): v3.3.1 en línea (CI #13 en verde, 175 pruebas). Ícono de la app subido (con fondo transparente: Meta rechazaba el fondo blanco). Messenger e Instagram conectados en Canales. La **v3.4** suma la **coexistencia** (BOT-RF-36 a 39): el bot responde en el número del WhatsApp Business del negocio sin sacarlo de la app del celular, y se calla en un chat cuando la dueña responde a mano. 189 pruebas. **Pendiente:** registrar la app como Tech Provider y crear la configuración del registro en Meta (con el OK de Hugo), conectar el 75013150 desde el panel, probar Messenger e Instagram y la revisión de la app.

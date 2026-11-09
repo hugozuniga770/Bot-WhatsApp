@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 09/11/2026 · Versión: v3.4.1
+- Fecha: 09/11/2026 · Versión: v3.4.2
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -243,13 +243,21 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 
 **Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.
 
+## v3.4.2: ventana de Meta y canje del código (09/11/2026)
+
+| Entorno | Resultado |
+|---|---|
+| v3.4.1 · GitHub Actions #15 (commit `638f82f`) | **192 passed**, 0 saltadas |
+| v3.4.2 · entorno de armado, con PostgreSQL 16 real | **194 passed**, 0 saltadas (2 nuevas: `test_RF36_si_meta_pide_redirect_uri_se_reintenta_con_redirect_uri_vacio`, `test_RF36_si_la_ventana_se_cierra_sin_registro_el_panel_lo_explica`) |
+| v3.4.2 · GitHub Actions | **Pendiente:** confirmar al subir |
+
 ## v3.4.1: la conexión no depende del aviso de Meta (09/11/2026)
 
 | Entorno | Resultado |
 |---|---|
 | v3.4 · GitHub Actions #14 (commit `f7fa0fe`) | **189 passed**, 0 saltadas |
 | v3.4.1 · entorno de armado, con PostgreSQL 16 real | **192 passed**, 0 saltadas (3 nuevas) |
-| v3.4.1 · GitHub Actions | **Pendiente:** confirmar al subir |
+| v3.4.1 · GitHub Actions #15 (commit `638f82f`) | **192 passed**, 0 saltadas (09/11/2026) |
 
 | Requisito | Tests nuevos (`test_coexistencia.py`) |
 |---|---|

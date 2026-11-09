@@ -670,6 +670,10 @@ def coexistencia_finalizar(eid):
     if not waba_id:
         ok, wabas = c.registro.wabas_del_token(app_id, secretos["meta_app_secret"], token)
         if not ok or not wabas:
+            if ok and not eventos:
+                # Pasó el 09/11/2026: la ventana se cerró sola, sin pantallas ni QR (C-23)
+                return fallo("waba", "Cuenta de WhatsApp", "La ventana de Meta se cerró sin mostrar el registro de WhatsApp (no hubo QR). "
+                             "Revisa que la configuración del inicio de sesión tenga el producto WhatsApp Cloud API.")
             return fallo("waba", "Cuenta de WhatsApp", wabas if not ok else
                          "El registro no dio acceso a ninguna cuenta de WhatsApp. ¿Se terminó el paso del QR?")
         if len(wabas) > 1:
