@@ -177,7 +177,7 @@ def lista_de_numeros(texto: str) -> set[str]:
 # ---------------------------------------------------------------- empresas y formularios
 
 def normalizar_numero(numero: str) -> str:
-    """'+591 750-13150' -> '59175013150' (formato que usa Meta)."""
+    """'+591 700-00001' -> '59170000001' (formato que usa Meta)."""
     return re.sub(r"\D", "", numero or "")
 
 
@@ -472,3 +472,31 @@ def bolivianos(valor) -> str:
     valor = float(valor)
     entero = f"{int(round(valor)):,}".replace(",", ".")
     return f"Bs {entero}" if abs(valor - round(valor)) < 0.005 else f"Bs {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+# ---------------------------------------------------------------- archivos y trato (v3.1.1)
+EXTENSIONES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/pdf": "pdf"}
+
+
+def tipo_de_archivo(datos: bytes) -> str | None:
+    """El tipo REAL de un archivo, mirando sus primeros bytes (no lo que dice quien lo manda).
+
+    Solo se aceptan fotos (PNG, JPG, WEBP) y PDF. Cualquier otra cosa (HTML, SVG, scripts)
+    devuelve None: así un "comprobante" falso no puede ejecutar código en el panel.
+    """
+    cabeza = bytes(datos[:16]) if datos else b""
+    if cabeza.startswith(b"\x89PNG"):
+        return "image/png"
+    if cabeza.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if cabeza[:4] == b"RIFF" and cabeza[8:12] == b"WEBP":
+        return "image/webp"
+    if cabeza.startswith(b"%PDF-"):
+        return "application/pdf"
+    return None
+
+
+def trato(empresa: dict) -> str:
+    """'usted' o 'tu', según lo que eligió el negocio (por defecto, usted)."""
+    return "tu" if (empresa or {}).get("trato") == "tu" else "usted"
+

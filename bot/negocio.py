@@ -184,7 +184,9 @@ def cita(cid):
             flash("Cita actualizada.", "ok")
             return redirect(url_for(".cita", cid=cid))
         valores = request.form
+    comprobante = c.almacen.archivo(g.empresa["id"], actual["comprobante_id"]) if actual.get("comprobante_id") else None
     return render_template("negocio/cita.html", cita=actual, paciente=None, valores=valores, errores=errores,
+                           comprobante_pdf=bool(comprobante) and reglas.tipo_de_archivo(comprobante["datos"]) == "application/pdf",
                            sedes=A.sedes(g.empresa), hoy=_hoy())
 
 
@@ -287,9 +289,14 @@ def borrar_bloqueo(bid):
 from . import reservas as R  # noqa: E402
 
 TIPOS_QR = ("image/png", "image/jpeg", "image/webp")
-CONFIRMACION = "✅ ¡Listo, {nombre}! Tu cita quedó confirmada: {dia} a las {hora} en {sede}.{ubicacion} Si necesitas reprogramar, avísanos con 24 horas de anticipación."
-RECHAZO = ("No pudimos confirmar tu pago{motivo}. Revisa el comprobante y mándalo de nuevo por aquí en las próximas "
-           "{plazo:g} horas para no perder tu horario del {dia} a las {hora}.")
+CONFIRMACION = {
+    "usted": "✅ ¡Listo, {nombre}! Su cita quedó confirmada: {dia} a las {hora} en {sede}.{ubicacion} Si necesita reprogramar, avísenos con 24 horas de anticipación.",
+    "tu": "✅ ¡Listo, {nombre}! Tu cita quedó confirmada: {dia} a las {hora} en {sede}.{ubicacion} Si necesitas reprogramar, avísanos con 24 horas de anticipación.",
+}
+RECHAZO = {
+    "usted": "No pudimos confirmar su pago{motivo}. Revise el comprobante y mándelo de nuevo por aquí en las próximas {plazo:g} horas para no perder su horario del {dia} a las {hora}.",
+    "tu": "No pudimos confirmar tu pago{motivo}. Revisa el comprobante y mándalo de nuevo por aquí en las próximas {plazo:g} horas para no perder tu horario del {dia} a las {hora}.",
+}
 
 
 @negocio.app_context_processor
@@ -318,9 +325,9 @@ def pagos():
 @negocio.get("/archivos/<int:aid>")
 @requiere_usuario
 def archivo(aid):
-    from flask import Response
+    from .app import respuesta_de_archivo
     a = ctx().almacen.archivo(g.empresa["id"], aid) or abort(404)
-    return Response(a["datos"], mimetype=a["mime"], headers={"Cache-Control": "private, max-age=3600"})
+    return respuesta_de_archivo(a["datos"], f"comprobante-{aid}")
 
 
 @negocio.post("/citas/<int:cid>/aprobar")
@@ -342,7 +349,7 @@ def aprobar_pago(cid):
     cita = c.almacen.actualizar_cita(g.empresa["id"], cid, {"estado": "confirmada", "adelanto": monto, "reserva_vence": None}, ahora)
     r = R.resumen(cita, _zona())
     ubicacion = R.cobro(g.empresa)["ubicaciones"].get(cita["sede"], "")
-    texto = CONFIRMACION.format(nombre=(cita["paciente_nombre"] or "").split(" ")[0], dia=r["dia"], hora=r["hora"], sede=r["sede"],
+    texto = CONFIRMACION[reglas.trato(g.empresa)].format(nombre=(cita["paciente_nombre"] or "").split(" ")[0], dia=r["dia"], hora=r["hora"], sede=r["sede"],
                                 ubicacion=f" Ubicación: {ubicacion}." if ubicacion else "")
     envio = c.servicios.avisar(g.empresa, cita["paciente_telefono"], texto, ahora)
     c.almacen.registrar_evento(g.empresa["id"], "pago", f"{g.usuario['nombre']} aprobó el adelanto de Bs {monto:g} de {cita['paciente_nombre']}.", ahora)
@@ -366,7 +373,7 @@ def rechazar_pago(cid):
     cita = c.almacen.actualizar_cita(g.empresa["id"], cid, {"estado": "pendiente_pago", "reserva_vence": ahora + timedelta(hours=plazo)}, ahora)
     r = R.resumen(cita, _zona())
     motivo = " ".join(request.form.get("motivo", "").split())[:200]
-    texto = RECHAZO.format(motivo=f": {motivo}" if motivo else "", plazo=plazo, dia=r["dia"], hora=r["hora"])
+    texto = RECHAZO[reglas.trato(g.empresa)].format(motivo=f": {motivo}" if motivo else "", plazo=plazo, dia=r["dia"], hora=r["hora"])
     envio = c.servicios.avisar(g.empresa, cita["paciente_telefono"], texto, ahora)
     c.almacen.registrar_evento(g.empresa["id"], "pago", f"{g.usuario['nombre']} rechazó el comprobante de {cita['paciente_nombre']}.", ahora)
     flash("Comprobante rechazado. El paciente tiene un nuevo plazo para mandarlo." if envio
@@ -389,12 +396,12 @@ def cobros():
         archivo_qr = request.files.get("qr")
         if archivo_qr and archivo_qr.filename:
             datos = archivo_qr.read(2 * 1024 * 1024 + 1)
-            if archivo_qr.mimetype not in TIPOS_QR:
+            if reglas.tipo_de_archivo(datos) not in TIPOS_QR:  # por sus bytes, no por lo que declara el navegador
                 errores["qr"] = "El QR tiene que ser una imagen PNG, JPG o WEBP."
             elif len(datos) > 2 * 1024 * 1024:
                 errores["qr"] = "La imagen del QR pesa más de 2 MB."
             else:
-                nuevo["qr_id"] = c.almacen.guardar_archivo(g.empresa["id"], "qr", archivo_qr.mimetype, datos, c.ahora())
+                nuevo["qr_id"] = c.almacen.guardar_archivo(g.empresa["id"], "qr", reglas.tipo_de_archivo(datos), datos, c.ahora())
         if request.form.get("quitar_qr"):
             nuevo["qr_id"] = None
         if not errores:

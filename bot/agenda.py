@@ -7,6 +7,7 @@ Todo lo de un negocio se busca SIEMPRE con su `empresa_id`: un usuario de una em
 no puede ver ni tocar lo de otra (BOT-RF-21).
 """
 import secrets
+import threading
 from datetime import date, datetime, timedelta
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -17,6 +18,17 @@ from . import reglas
 # la respuesta tarde lo mismo y no delate qué usuarios existen.
 _HASH_DE_RELLENO = generate_password_hash("relleno-que-nunca-coincide")
 _LETRAS_CLAVE = "abcdefghjkmnpqrstuvwxyz23456789"  # sin 0/o ni 1/l, que se confunden
+
+# Mirar si un horario está libre y guardar la cita tiene que ser un solo paso: si no, el bot
+# y la asistente (o dos pacientes) podrían tomar el mismo turno a la vez. Render corre un solo
+# proceso (--workers 1), así que alcanza con un candado por negocio dentro del proceso (D-34).
+_candados: dict[int, threading.Lock] = {}
+_candados_lock = threading.Lock()
+
+
+def candado(empresa_id: int) -> threading.Lock:
+    with _candados_lock:
+        return _candados.setdefault(empresa_id, threading.Lock())
 
 
 # ------------------------------------------------------------------ accesos
@@ -110,6 +122,11 @@ def _numero(texto: str, campo: str, errores: dict, nombre: str):
 
 
 def guardar_cita(almacen, empresa: dict, form, ahora: datetime, zona: str, cita: dict | None = None):
+    with candado(empresa["id"]):
+        return _guardar_cita(almacen, empresa, form, ahora, zona, cita)
+
+
+def _guardar_cita(almacen, empresa: dict, form, ahora: datetime, zona: str, cita: dict | None = None):
     """Crea o cambia (reprograma) una cita. (cita, errores).
 
     El paciente puede ser uno que ya existe (paciente_id) o uno nuevo (nombre y teléfono):

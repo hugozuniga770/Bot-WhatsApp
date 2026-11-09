@@ -52,7 +52,7 @@ def test_RF07_sin_firma_o_con_el_secreto_de_otra_empresa_se_rechaza(web, empresa
 def test_RF09_meta_avisa_que_no_pudo_entregar_y_el_panel_lo_muestra(admin, empresa, almacen, config, payload, firmar, whatsapp, ahora):
     # Dada una empresa con su App Secret, y Meta avisa que un mensaje del bot no se entregó
     _con_secreto(almacen, empresa, config, ahora)
-    cuerpo, firma = firmar(payload(estados=[{"id": "wamid.9", "status": "failed", "recipient_id": "59169246105",
+    cuerpo, firma = firmar(payload(estados=[{"id": "wamid.9", "status": "failed", "recipient_id": "59170000123",
                                              "errors": [{"code": 131030, "title": "Recipient not in allowed list"}]}]))
     web, _ = admin
     # Cuando llega el aviso firmado
@@ -60,4 +60,4 @@ def test_RF09_meta_avisa_que_no_pudo_entregar_y_el_panel_lo_muestra(admin, empre
     # Entonces se responde 200, no se contesta a nadie y la Actividad del panel explica el motivo
     assert r.status_code == 200 and whatsapp.enviados == []
     detalle = web.get(f"/panel/empresas/{empresa['id']}").get_data(as_text=True)
-    assert "Meta no pudo entregar un mensaje a ...6105: ese número no está en la lista de destinatarios de prueba" in detalle
+    assert "Meta no pudo entregar un mensaje a ...0123: ese número no está en la lista de destinatarios de prueba" in detalle

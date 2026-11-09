@@ -43,19 +43,19 @@ def test_RF09_extrae_mensajes_e_ignora_estados_de_entrega(payload):
 def test_RF09_los_avisos_de_falla_se_leen_con_su_motivo_y_los_demas_estados_no(payload):
     # Dado un aviso de Meta con un mensaje "leído", uno "entregado" y uno que falló por la regla de las 24 h
     datos = payload(estados=[
-        {"id": "wamid.A", "status": "read", "recipient_id": "59169246105"},
-        {"id": "wamid.B", "status": "delivered", "recipient_id": "59169246105"},
-        {"id": "wamid.C", "status": "failed", "recipient_id": "59169246105", "errors": [{
+        {"id": "wamid.A", "status": "read", "recipient_id": "59170000123"},
+        {"id": "wamid.B", "status": "delivered", "recipient_id": "59170000123"},
+        {"id": "wamid.C", "status": "failed", "recipient_id": "59170000123", "errors": [{
             "code": 131047, "title": "Re-engagement message",
             "error_data": {"details": "Message failed to send because more than 24 hours have passed"}}]},
     ])
     # Cuando se leen los avisos
     fallas = reglas.extraer_fallas(datos)
     # Entonces sale solo la falla, y el texto para el panel la explica en palabras simples sin el número completo
-    assert [(f.id, f.numero, f.codigo) for f in fallas] == [("wamid.C", "59169246105", 131047)]
+    assert [(f.id, f.numero, f.codigo) for f in fallas] == [("wamid.C", "59170000123", 131047)]
     texto = reglas.texto_de_falla(fallas[0])
-    assert texto.startswith("Meta no pudo entregar un mensaje a ...6105: pasaron más de 24 horas")
-    assert "(código 131047)" in texto and "69246105" not in texto
+    assert texto.startswith("Meta no pudo entregar un mensaje a ...0123: pasaron más de 24 horas")
+    assert "(código 131047)" in texto and "70000123" not in texto
     # Y no son mensajes de clientes
     assert reglas.extraer_mensajes(datos) == []
 
@@ -122,5 +122,5 @@ def test_RF15_los_formatos_incorrectos_se_explican_en_palabras_simples():
 
 def test_RF12_slug_y_numeros_se_normalizan():
     assert reglas.crear_slug("Sentirse Única S.R.L.") == "sentirse-unica-s-r-l"
-    assert reglas.normalizar_numero("+591 750-13150") == "59175013150"
+    assert reglas.normalizar_numero("+591 700-00001") == "59170000001"
     assert reglas.lista_de_numeros("+591 7000 0001, 59170000002\n") == {"59170000001", "59170000002"}

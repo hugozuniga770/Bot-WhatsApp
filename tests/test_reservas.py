@@ -97,7 +97,7 @@ def test_RF29_sin_comprobante_a_tiempo_el_horario_se_libera_y_se_avisa(servicios
     # Pasado el plazo, la cita se cancela, el turno vuelve a estar libre y el paciente recibe el aviso
     assert servicios.vencer_reservas(negocio, ahora + timedelta(hours=2, minutes=1)) == 1
     assert almacen.cita(negocio["id"], r["cita_id"])["estado"] == "cancelada"
-    assert whatsapp.enviados[-1][0] == CLIENTE and "Se liberó tu horario" in whatsapp.enviados[-1][1]
+    assert whatsapp.enviados[-1][0] == CLIENTE and "Se liberó su horario" in whatsapp.enviados[-1][1]
     assert R.turnos_libres(almacen, negocio, ahora + timedelta(hours=3), "America/La_Paz")[0]["turno"] == LUNES_1030
 
 
@@ -135,7 +135,7 @@ def test_RF28_la_foto_del_comprobante_pasa_la_cita_a_por_revisar_y_avisa_a_la_as
     cita = almacen.cita(negocio["id"], r["cita_id"])
     assert cita["estado"] == "por_revisar" and almacen.archivo(negocio["id"], cita["comprobante_id"])["datos"] == b"\x89PNG-comprobante"
     assert whatsapp.descargados == ["MEDIA-123"]
-    assert whatsapp.enviados[0][0] == CLIENTE and "Recibimos tu comprobante" in whatsapp.enviados[0][1]
+    assert whatsapp.enviados[0][0] == CLIENTE and "Recibimos su comprobante" in whatsapp.enviados[0][1]
     assert whatsapp.enviados[1][0] == ASISTENTE and "Bs 125" in whatsapp.enviados[1][1] and f"/negocio/citas/{cita['id']}" in whatsapp.enviados[1][1]
     # Y una reserva por revisar ya no se libera sola
     assert servicios.vencer_reservas(negocio, ahora + timedelta(hours=5)) == 0
@@ -213,12 +213,93 @@ def test_RF30_la_duena_configura_los_cobros_y_la_asistente_no(web, almacen, empr
 
 
 def test_RF30_el_qr_de_cobro_es_publico_y_solo_si_es_un_qr(web, almacen, negocio, ahora):
-    qr = almacen.guardar_archivo(negocio["id"], "qr", "image/png", b"QR", ahora)
+    qr = almacen.guardar_archivo(negocio["id"], "qr", "image/png", PNG + b"QR", ahora)
     almacen.actualizar_empresa(negocio["id"], {"cobro": {**COBRO, "qr_id": qr}}, ahora)
-    assert web.get(f"/pago/{negocio['slug']}/qr").data == b"QR"
+    assert web.get(f"/pago/{negocio['slug']}/qr").data == PNG + b"QR"
     comprobante = almacen.guardar_archivo(negocio["id"], "comprobante", "image/png", b"PRIVADO", ahora)
     almacen.actualizar_empresa(negocio["id"], {"cobro": {**COBRO, "qr_id": comprobante}}, ahora)
     assert web.get(f"/pago/{negocio['slug']}/qr").status_code == 404
+
+
+# ------------------------------------------------------------------ v3.1.1: archivos seguros, trato y candado
+PNG = b"\x89PNG\r\n\x1a\n"
+ZONA = "America/La_Paz"
+_entrar_como_duena = _sesion  # entra con un acceso de rol dueña y devuelve el csrf
+HTML_MALICIOSO = b"<html><script src='/negocio/archivos/1'></script>robar la sesion</html>"
+
+
+def test_RF28_un_archivo_que_no_es_foto_ni_pdf_no_se_guarda_como_comprobante(servicios, almacen, negocio, whatsapp, mensaje, ahora):
+    # Dada una reserva por pagar, y el paciente manda un documento HTML diciendo que es un PDF
+    r = _reservar(almacen, negocio, ahora)
+    whatsapp.archivo = (HTML_MALICIOSO, "application/pdf")
+    doc = mensaje(tipo="document")
+    doc = doc.__class__(doc.id, doc.numero, "document", "", "MEDIA-666")
+    # Cuando llega
+    resultado = servicios.atender(negocio, doc, ahora + timedelta(minutes=10))
+    # Entonces no se guarda, la cita sigue esperando el pago y se le pide una foto o el PDF del banco
+    cita = almacen.cita(negocio["id"], r["cita_id"])
+    assert resultado == s.COMPROBANTE_FALLIDO and cita["estado"] == "pendiente_pago" and cita["comprobante_id"] is None
+    assert "foto o captura del comprobante" in whatsapp.enviados[-1][1]
+    assert "no es una foto ni un PDF" in almacen.eventos(negocio["id"])[0]["detalle"]
+
+
+def test_RF30_los_archivos_se_sirven_aislados_y_solo_si_son_foto_o_pdf(web, almacen, negocio, ahora):
+    web_, _ = web if isinstance(web, tuple) else (web, None)
+    eid = negocio["id"]
+    foto = almacen.guardar_archivo(eid, "comprobante", "image/png", PNG + b"foto", ahora)
+    pdf = almacen.guardar_archivo(eid, "comprobante", "application/pdf", b"%PDF-1.7 comprobante", ahora)
+    # Un archivo viejo guardado como "imagen" pero que en realidad es HTML
+    trampa = almacen.guardar_archivo(eid, "comprobante", "image/png", HTML_MALICIOSO, ahora)
+    _entrar_como_duena(web_, almacen, negocio, ahora)
+    r = web_.get(f"/negocio/archivos/{foto}")
+    assert r.status_code == 200 and r.mimetype == "image/png" and "sandbox" in r.headers["Content-Security-Policy"]
+    assert r.headers["Content-Disposition"].startswith("inline")
+    r = web_.get(f"/negocio/archivos/{pdf}")
+    assert r.mimetype == "application/pdf" and r.headers["Content-Disposition"].startswith("attachment")
+    assert web_.get(f"/negocio/archivos/{trampa}").status_code == 404
+
+
+def test_RF30_un_qr_que_no_es_imagen_se_rechaza_aunque_el_navegador_diga_que_si(web, almacen, empresa, ahora):
+    import io
+    web_, _ = web if isinstance(web, tuple) else (web, None)
+    almacen.actualizar_empresa(empresa["id"], {"agenda": {"duracion": 30, "turnos": [{"dia": 0, "sede": "INCOR", "desde": "10:30", "hasta": "12:00"}]}}, ahora)
+    csrf = _entrar_como_duena(web_, almacen, empresa, ahora)
+    r = web_.post("/negocio/cobros", data={"csrf": csrf, "porcentaje": "50", "plazo_horas": "2",
+                                           "qr": (io.BytesIO(HTML_MALICIOSO), "qr.png", "image/png")},
+                  content_type="multipart/form-data")
+    assert "El QR tiene que ser una imagen PNG, JPG o WEBP." in r.get_data(as_text=True)
+
+
+def test_RF28_los_mensajes_automaticos_respetan_el_trato_de_tu(servicios, almacen, negocio, whatsapp, mensaje, ahora):
+    negocio = almacen.actualizar_empresa(negocio["id"], {"trato": "tu"}, ahora)
+    _reservar(almacen, negocio, ahora)
+    foto = mensaje(tipo="image")
+    foto = foto.__class__(foto.id, foto.numero, "image", "", "MEDIA-7")
+    servicios.atender(negocio, foto, ahora + timedelta(minutes=5))
+    assert "Recibimos tu comprobante" in whatsapp.enviados[0][1]
+
+
+def test_RF27_dos_reservas_a_la_vez_no_toman_el_mismo_turno(almacen, negocio, ahora):
+    import threading
+    import time
+    # Dado un almacén lento (para que las dos reservas se crucen) y dos pacientes que eligen el mismo turno
+    turno = R.turnos_libres(almacen, negocio, ahora, ZONA)[0]["turno"]
+    original = almacen.citas
+    def lenta(*args, **kwargs):
+        resultado = original(*args, **kwargs)
+        time.sleep(0.05)
+        return resultado
+    almacen.citas = lenta
+    resultados = []
+    hilos = [threading.Thread(target=lambda n=n: resultados.append(
+        R.reservar(almacen, negocio, n, turno, "Paciente Prueba", "", ahora, ZONA))) for n in ("59170000201", "59170000202")]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    almacen.citas = original
+    # Entonces solo una reserva se guarda; la otra sabe que el turno está ocupado
+    assert sorted(r.get("motivo", "ok") for r in resultados) == ["ocupado", "ok"]
 
 
 # ------------------------------------------------------------------ Claude con herramientas

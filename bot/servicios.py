@@ -31,13 +31,25 @@ FALLA_REGISTRADA = "falla_registrada"
 COMPROBANTE = "comprobante"
 COMPROBANTE_FALLIDO = "comprobante_fallido"
 
-RESPUESTA_COMPROBANTE = ("¡Gracias, {nombre}! Recibimos tu comprobante. Lo revisamos y te confirmamos la cita "
-                         "del {dia} a las {hora} en {sede} por este chat.")
-RESPUESTA_COMPROBANTE_ERROR = "No pude abrir el archivo 😕 ¿Me lo reenvías como foto, por favor?"
+# Mensajes automáticos a pacientes, según el trato que eligió el negocio (usted o tú)
+RESPUESTA_COMPROBANTE = {
+    "usted": "¡Gracias, {nombre}! Recibimos su comprobante. Lo revisamos y le confirmamos la cita del {dia} a las {hora} en {sede} por este chat.",
+    "tu": "¡Gracias, {nombre}! Recibimos tu comprobante. Lo revisamos y te confirmamos la cita del {dia} a las {hora} en {sede} por este chat.",
+}
+RESPUESTA_COMPROBANTE_ERROR = {
+    "usted": "No pude abrir el archivo 😕 ¿Me lo reenvía como foto, por favor?",
+    "tu": "No pude abrir el archivo 😕 ¿Me lo reenvías como foto, por favor?",
+}
+RESPUESTA_COMPROBANTE_TIPO = {
+    "usted": "Ese archivo no lo puedo recibir como comprobante. ¿Me manda una foto o captura del comprobante, o el PDF del banco, por favor?",
+    "tu": "Ese archivo no lo puedo recibir como comprobante. ¿Me mandas una foto o captura del comprobante, o el PDF del banco, por favor?",
+}
 AVISO_COMPROBANTE = ("🧾 Comprobante por revisar: {nombre} ({telefono}) mandó el adelanto de Bs {monto:g} para la "
                      "valoración del {dia} a las {hora} en {sede}. Revísalo y apruébalo en el panel: {enlace}")
-AVISO_VENCIDA = ("Se liberó tu horario del {dia} a las {hora} en {sede}, porque no recibimos el comprobante a tiempo. "
-                 "Si quieres, escríbeme y te busco otro turno.")
+AVISO_VENCIDA = {
+    "usted": "Se liberó su horario del {dia} a las {hora} en {sede}, porque no recibimos el comprobante a tiempo. Si quiere, escríbame y le busco otro turno.",
+    "tu": "Se liberó tu horario del {dia} a las {hora} en {sede}, porque no recibimos el comprobante a tiempo. Si quieres, escríbeme y te busco otro turno.",
+}
 
 
 class Servicios:
@@ -147,14 +159,19 @@ class Servicios:
         ok, datos = whatsapp.descargar_media(msg.media_id)
         if not ok:
             self._almacen.registrar_evento(eid, "error", f"No se pudo bajar un comprobante de ...{msg.numero[-4:]}: {datos[1]}", ahora)
-            whatsapp.enviar_texto(msg.numero, RESPUESTA_COMPROBANTE_ERROR)
+            whatsapp.enviar_texto(msg.numero, RESPUESTA_COMPROBANTE_ERROR[reglas.trato(empresa)])
             return COMPROBANTE_FALLIDO
-        contenido, mime = datos
-        archivo_id = self._almacen.guardar_archivo(eid, "comprobante", mime, contenido, ahora)
+        contenido, _ = datos
+        tipo = reglas.tipo_de_archivo(contenido)  # el tipo real, no el que declara el archivo
+        if not tipo:
+            self._almacen.registrar_evento(eid, "error", f"Se rechazó un archivo de ...{msg.numero[-4:]}: no es una foto ni un PDF.", ahora)
+            whatsapp.enviar_texto(msg.numero, RESPUESTA_COMPROBANTE_TIPO[reglas.trato(empresa)])
+            return COMPROBANTE_FALLIDO
+        archivo_id = self._almacen.guardar_archivo(eid, "comprobante", tipo, contenido, ahora)
         cita = self._almacen.actualizar_cita(eid, cita["id"], {"estado": "por_revisar", "comprobante_id": archivo_id}, ahora)
         r = reservas.resumen(cita, self._zona)
         primer_nombre = (cita["paciente_nombre"] or "").split(" ")[0] or "gracias"
-        texto = RESPUESTA_COMPROBANTE.format(nombre=primer_nombre, dia=r["dia"], hora=r["hora"], sede=r["sede"])
+        texto = RESPUESTA_COMPROBANTE[reglas.trato(empresa)].format(nombre=primer_nombre, dia=r["dia"], hora=r["hora"], sede=r["sede"])
         self._almacen.agregar(eid, msg.numero, "user", "[Mandó la foto del comprobante de pago]", ahora)
         if whatsapp.enviar_texto(msg.numero, texto):
             self._almacen.agregar(eid, msg.numero, "assistant", texto, ahora)
@@ -182,7 +199,7 @@ class Servicios:
             whatsapp = self._whatsapp(empresa)
             for c in liberadas:
                 r = reservas.resumen(c, self._zona)
-                whatsapp.enviar_texto(c["paciente_telefono"], AVISO_VENCIDA.format(dia=r["dia"], hora=r["hora"], sede=r["sede"]))
+                whatsapp.enviar_texto(c["paciente_telefono"], AVISO_VENCIDA[reglas.trato(empresa)].format(dia=r["dia"], hora=r["hora"], sede=r["sede"]))
         return len(liberadas)
 
     def registrar_falla(self, empresa: dict, falla: FallaDeEntrega, ahora: datetime) -> str:

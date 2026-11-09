@@ -42,9 +42,13 @@
   </dl>
   {% if cita.comprobante_id %}
   <p class="suave chico">Comprobante que mandó por WhatsApp. Antes de aprobar, revisa en tu banco que el dinero haya llegado.</p>
-  <a href="{{ url_for('negocio.archivo', aid=cita.comprobante_id) }}" target="_blank" rel="noopener">
+  {% if comprobante_pdf %}
+  <p><a class="boton" href="{{ url_for('negocio.archivo', aid=cita.comprobante_id) }}">Descargar el comprobante (PDF)</a></p>
+  {% else %}
+  <a href="{{ url_for('negocio.archivo', aid=cita.comprobante_id) }}" target="_blank" rel="noopener noreferrer">
     <img class="comprobante" src="{{ url_for('negocio.archivo', aid=cita.comprobante_id) }}" alt="Comprobante de pago de {{ cita.paciente_nombre }}">
   </a>
+  {% endif %}
   {% endif %}
   {% if cita.estado in ('por_revisar', 'pendiente_pago') %}
   <form method="post" action="{{ url_for('negocio.aprobar_pago', cid=cita.id) }}" data-confirmar="¿Confirmar que el dinero llegó? El bot le avisará al paciente que su cita quedó confirmada.">

@@ -1,9 +1,9 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.1
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.1.1
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
-- Estado al 08/11/2026: v2.4 en línea en Render con el CI en verde (82 pruebas, run #6). **Prueba de punta a punta superada:** el bot de Sentirse Única respondió por WhatsApp en el número de prueba. La v2.5 anota en la Actividad los mensajes que Meta no pudo entregar y deja cambiar el token de verificación. La **v3.0** suma la **agenda de cada negocio** (etapa 1): accesos propios para la dueña y su asistente, agenda de semana, día y mes con turnos libres, citas, pacientes, horario y días bloqueados. 120 pruebas en el entorno de armado. **Pendiente:** el CI de la v3.0; la etapa 2 (el bot agenda y cobra el adelanto, D-27 y D-28); el número real con coexistencia (D-05).
+- Estado al 08/11/2026: v3.1 en línea en Render con el CI en verde. El bot de Sentirse Única responde en el número de prueba y puede agendar valoraciones con adelanto (etapa 2). La **v3.1.1** corrige la revisión de seguridad de la v3.1: los comprobantes se aceptan solo si son fotos o PDF de verdad y se muestran aislados; dos reservas simultáneas ya no pueden tomar el mismo turno; los mensajes automáticos respetan el trato de usted. 144 pruebas. **Pendiente:** el CI de la v3.1.1; publicar la app en Meta (falta el ícono y la verificación del negocio); la coexistencia en el número real (D-05), que necesita la verificación y ser Tech Provider.
 
 ## 1. Qué hace
 

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from . import reglas
+from .agenda import candado
 
 DIAS_A_MIRAR = 14
 MAX_TURNOS = 6
@@ -147,6 +148,11 @@ def _turno_valido(almacen, empresa: dict, inicio: datetime, sede: str, ahora: da
 
 # ------------------------------------------------------------------ acciones
 def reservar(almacen, empresa: dict, numero: str, turno: str, nombre: str, motivo: str, ahora: datetime, zona: str) -> dict:
+    with candado(empresa["id"]):
+        return _reservar(almacen, empresa, numero, turno, nombre, motivo, ahora, zona)
+
+
+def _reservar(almacen, empresa: dict, numero: str, turno: str, nombre: str, motivo: str, ahora: datetime, zona: str) -> dict:
     eid = empresa["id"]
     actual = reserva_activa(almacen, eid, numero, ahora)
     if actual:
@@ -183,6 +189,11 @@ def reservar(almacen, empresa: dict, numero: str, turno: str, nombre: str, motiv
 
 
 def reprogramar(almacen, empresa: dict, numero: str, turno: str, ahora: datetime, zona: str) -> dict:
+    with candado(empresa["id"]):
+        return _reprogramar(almacen, empresa, numero, turno, ahora, zona)
+
+
+def _reprogramar(almacen, empresa: dict, numero: str, turno: str, ahora: datetime, zona: str) -> dict:
     actual = reserva_activa(almacen, empresa["id"], numero, ahora)
     if not actual:
         return {"ok": False, "motivo": "sin_reserva"}

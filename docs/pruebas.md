@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 08/11/2026 · Versión: v3.0
+- Fecha: 08/11/2026 · Versión: v3.1.1
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -24,6 +24,9 @@ Los tests del almacén (`test_almacen.py`) son un **contrato** (D-12): cada uno 
 
 | Corrida | Fecha | Resultado |
 |---|---|---|
+| v3.1.1 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **144 passed**, 0 saltadas. La prueba de reservas simultáneas falla si se quita el candado (comprobado) |
+| v3.1.1 · migración | 08/11/2026 | El esquema de la v3.1 aplicado sobre una base con el de la v3.0, dos veces seguidas, sin errores |
+| v3.1.1 · GitHub Actions | — | **Pendiente** |
 | v3.0 · entorno de armado, sin base | 08/11/2026 | **104 passed, 16 skipped** |
 | v3.0 · entorno de armado, con PostgreSQL 16 real | 08/11/2026 | **120 passed**, 0 saltadas |
 | v3.0 · recorrido en navegador de celular (390 px), modo claro y oscuro | 08/11/2026 | Entrar, semana, día, mes, detalle de cita y horario con datos de ejemplo; sin errores en la consola |
@@ -203,6 +206,11 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 | BOT-RF-25 | `test_RF25_el_horario_se_lee_del_formulario_y_explica_cada_fila_mal_escrita` | `test_agenda.py` | Pasa |
 | BOT-RF-25 | `test_RF25_el_horario_y_los_bloqueos_se_guardan_desde_el_panel` | `test_negocio.py` | Pasa |
 | BOT-RF-25 | `test_RF25_un_dia_bloqueado_no_ofrece_turnos_pero_muestra_sus_citas` | `test_agenda.py` | Pasa |
+| BOT-RF-27 | `test_RF27_dos_reservas_a_la_vez_no_toman_el_mismo_turno` | `test_reservas.py` | Pasa |
+| BOT-RF-28 | `test_RF28_un_archivo_que_no_es_foto_ni_pdf_no_se_guarda_como_comprobante` | `test_reservas.py` | Pasa |
+| BOT-RF-28 | `test_RF28_los_mensajes_automaticos_respetan_el_trato_de_tu` | `test_reservas.py` | Pasa |
+| BOT-RF-30 | `test_RF30_los_archivos_se_sirven_aislados_y_solo_si_son_foto_o_pdf` | `test_reservas.py` | Pasa |
+| BOT-RF-30 | `test_RF30_un_qr_que_no_es_imagen_se_rechaza_aunque_el_navegador_diga_que_si` | `test_reservas.py` | Pasa |
 
 "Pasa" se refiere a la corrida con PostgreSQL del entorno de armado. Cuando corras en tu PC y en Actions, actualiza la sección 2.
 

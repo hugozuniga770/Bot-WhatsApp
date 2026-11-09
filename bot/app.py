@@ -124,7 +124,27 @@ def qr_de_pago(slug):
     archivo = c.almacen.archivo(empresa["id"], int(qr_id)) if qr_id else None
     if not archivo or archivo["tipo"] != "qr":
         abort(404)
-    return Response(archivo["datos"], mimetype=archivo["mime"], headers={"Cache-Control": "public, max-age=300"})
+    respuesta = respuesta_de_archivo(archivo["datos"], f"qr-{slug}")
+    respuesta.headers["Cache-Control"] = "public, max-age=300"
+    return respuesta
+
+
+def respuesta_de_archivo(datos: bytes, nombre: str):
+    """Devuelve un archivo guardado (QR o comprobante) sin dejar que ejecute nada.
+
+    El tipo sale de los bytes (reglas.tipo_de_archivo), nunca del dato guardado: si no es
+    una foto o un PDF, 404. Las fotos se muestran con una política que prohíbe scripts
+    (sandbox); los PDF se descargan.
+    """
+    from flask import Response
+    tipo = reglas.tipo_de_archivo(datos)
+    if not tipo:
+        abort(404)
+    respuesta = Response(datos, mimetype=tipo)
+    forma = "attachment" if tipo == "application/pdf" else "inline"
+    respuesta.headers["Content-Disposition"] = f'{forma}; filename="{nombre}.{reglas.EXTENSIONES[tipo]}"'
+    respuesta.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+    return respuesta
 
 
 @webhook.get("/privacidad/<slug>")
@@ -248,11 +268,12 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
         respuesta.headers["X-Content-Type-Options"] = "nosniff"
         respuesta.headers["X-Frame-Options"] = "DENY"
         respuesta.headers["Referrer-Policy"] = "no-referrer"
-        respuesta.headers["Content-Security-Policy"] = (
-            "default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-            "font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'; "
-            "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-        )
+        if "Content-Security-Policy" not in respuesta.headers:  # los archivos traen una más estricta
+            respuesta.headers["Content-Security-Policy"] = (
+                "default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
+                "font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'; "
+                "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+            )
         if request.path.startswith(("/panel", "/alta", "/negocio")):
             respuesta.headers["Cache-Control"] = "no-store"
         return respuesta
