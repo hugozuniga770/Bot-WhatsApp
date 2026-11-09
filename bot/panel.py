@@ -546,3 +546,191 @@ def chequeo_canales(empresa: dict) -> list:
     token = c.cifrador.descifrar(empresa.get("pagina_token_cif", ""))
     ok, detalle = c.conector.pagina_suscrita(config["pagina_id"], token, empresa.get("meta_app_id", ""))
     return [Chequeo("canales", f"Messenger e Instagram ({config['pagina_nombre'] or 'página'})", "ok" if ok else "atencion", detalle)]
+
+
+# ------------------------------------------------------------------ coexistencia (v3.4)
+# El bot responde en el número del WhatsApp Business del negocio sin sacarlo de la app del
+# celular. La conexión la hace Meta (Embedded Signup) desde esta pantalla; el panel cambia el
+# código por el token del negocio, suscribe la app y pide las dos sincronizaciones (D-41 a D-44).
+from . import coexistencia as X
+
+NUMERO_ID = _re.compile(r"\d{6,25}")
+# La pantalla de coexistencia carga el SDK de Meta: solo ella permite connect.facebook.net y facebook.com.
+CSP_COEXISTENCIA = (
+    "default-src 'self'; script-src 'self' https://connect.facebook.net; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+    "img-src 'self' data: https://*.facebook.com https://*.fbcdn.net; "
+    "frame-src https://*.facebook.com; connect-src 'self' https://*.facebook.com https://*.facebook.net; "
+    "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+)
+
+
+def _vista_coexistencia(empresa: dict, resultado: dict | None = None):
+    c = ctx()
+    config = X.config_de(empresa)
+    pendientes = [t for t in X.SINCRONIZACIONES if not (config["sincronizacion"].get(t) or {}).get("request_id")]
+    puede, motivo = X.puede_sincronizar(config, pendientes[0], c.ahora()) if pendientes else (False, "")
+    respuesta = current_app.make_response(render_template(
+        "coexistencia.html", e=empresa, x=config, resultado=resultado,
+        app_id=empresa.get("meta_app_id", ""), version=c.config.graph_version,
+        pendientes=pendientes, puede_sincronizar=puede, motivo_sincronizar=motivo,
+        nombres_sync=X.NOMBRES_SINCRONIZACION, prueba=(config.get("prueba") or {}),
+        dominio=url_base(), ultimo=c.almacen.actividad(empresa["id"]),
+    ))
+    respuesta.headers["Content-Security-Policy"] = CSP_COEXISTENCIA
+    return respuesta
+
+
+@panel.get("/empresas/<int:eid>/coexistencia")
+@requiere_admin
+def coexistencia(eid):
+    return _vista_coexistencia(_empresa_o_404(eid))
+
+
+@panel.post("/empresas/<int:eid>/coexistencia/configuracion")
+@requiere_admin
+def coexistencia_configuracion(eid):
+    """Guarda el ID de la configuración de «Inicio de sesión con Facebook para empresas»."""
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    config_id = "".join(request.form.get("config_id", "").split())
+    if not NUMERO_ID.fullmatch(config_id):
+        flash("El ID de la configuración son solo números (lo da Meta al crear la configuración).", "error")
+    else:
+        config = X.config_de(empresa)
+        config["config_id"] = config_id
+        c.almacen.actualizar_empresa(eid, {"coexistencia": config}, c.ahora())
+        c.almacen.registrar_evento(eid, "coexistencia", "Coexistencia: ID de la configuración de Meta guardado.", c.ahora())
+        flash("Listo: ya se puede conectar el WhatsApp Business.", "ok")
+    return redirect(url_for(".coexistencia", eid=eid))
+
+
+def _sincronizar(empresa: dict, config: dict, token: str, pasos: list) -> dict:
+    """Asegura los campos del webhook y pide las sincronizaciones que falten, en orden."""
+    c = ctx()
+    secretos = E.secretos_de(empresa, c.cifrador)
+    callback = f"{url_base()}/webhook/{empresa['slug']}"
+    ok, detalle = c.conector.suscribir_app(empresa.get("meta_app_id", ""), secretos["meta_app_secret"], "whatsapp_business_account",
+                                           X.CAMPOS_WABA, callback, empresa.get("verify_token", ""))
+    pasos.append({"clave": "campos", "titulo": "Avisos del celular, historial y contactos", "estado": "ok" if ok else "falla",
+                  "detalle": "El webhook recibe lo que se escribe desde el celular, el historial y los contactos." if ok else detalle})
+    if not ok:
+        return config
+    for tipo in X.SINCRONIZACIONES:
+        if (config["sincronizacion"].get(tipo) or {}).get("request_id"):
+            continue
+        puede, motivo = X.puede_sincronizar(config, tipo, c.ahora())
+        titulo = f"Sincronizar {X.NOMBRES_SINCRONIZACION[tipo]}"
+        if not puede:
+            pasos.append({"clave": tipo, "titulo": titulo, "estado": "falla", "detalle": motivo})
+            break
+        ok, dato = c.registro.sincronizar(config["phone_number_id"], token, tipo)
+        if ok:
+            config["sincronizacion"] = {**config["sincronizacion"], tipo: {"request_id": dato, "fecha": c.ahora().isoformat()}}
+            pasos.append({"clave": tipo, "titulo": titulo, "estado": "ok", "detalle": "Pedida. Meta la manda por partes en los próximos minutos."})
+        else:
+            pasos.append({"clave": tipo, "titulo": titulo, "estado": "falla", "detalle": dato})
+            break
+    return config
+
+
+@panel.post("/empresas/<int:eid>/coexistencia/finalizar")
+@requiere_admin
+def coexistencia_finalizar(eid):
+    """Lo llama la pantalla cuando Meta termina el registro (código + id de la cuenta de WhatsApp)."""
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    datos = request.get_json(silent=True) or {}
+    codigo = str(datos.get("code") or "").strip()
+    waba_id = str(datos.get("waba_id") or "").strip()
+    pedido_numero = str(datos.get("phone_number_id") or "").strip()
+    if not codigo or len(codigo) > 2000 or not NUMERO_ID.fullmatch(waba_id) or (pedido_numero and not NUMERO_ID.fullmatch(pedido_numero)):
+        return jsonify({"ok": False, "mensaje": "Meta no devolvió los datos del registro. Vuelve a intentarlo."}), 400
+
+    pasos = []
+
+    def fallo(clave, titulo, detalle):
+        pasos.append({"clave": clave, "titulo": titulo, "estado": "falla", "detalle": detalle})
+        c.almacen.registrar_evento(eid, "error", f"Coexistencia: no se pudo conectar ({titulo.lower()}). No se cambió nada.", c.ahora())
+        return jsonify({"ok": False, "mensaje": f"No se pudo conectar: {detalle} No se cambió nada en el bot.", "pasos": pasos})
+
+    secretos = E.secretos_de(empresa, c.cifrador)
+    ok, token = c.registro.canjear_codigo(empresa.get("meta_app_id", ""), secretos["meta_app_secret"], codigo)
+    if not ok:
+        return fallo("codigo", "Código del registro", token)
+    pasos.append({"clave": "codigo", "titulo": "Código del registro", "estado": "ok", "detalle": "Meta dio el token del negocio."})
+
+    ok, numeros = c.registro.numeros_de(waba_id, token)
+    numero = X.elegir_numero(numeros, pedido_numero) if ok else None
+    if not numero:
+        return fallo("numero", "Número de WhatsApp", numeros if not ok else "No se encontró el número en la cuenta de WhatsApp.")
+    ok, info = c.registro.numero(str(numero["id"]), token)
+    if not ok:
+        return fallo("numero", "Número de WhatsApp", info)
+    if not info.get("is_on_biz_app"):
+        # Si el número no está en la app del celular, esto no es coexistencia: no se toca nada.
+        return fallo("numero", "Número de WhatsApp", "Ese número no está en la app WhatsApp Business del celular.")
+    pasos.append({"clave": "numero", "titulo": "Número de WhatsApp", "estado": "ok",
+                  "detalle": f"{info.get('display_phone_number') or numero.get('display_phone_number', '')} "
+                             f"({info.get('verified_name') or numero.get('verified_name', '')}), sigue en la app del celular."})
+
+    ok, detalle = c.registro.suscribir_waba(waba_id, token)
+    if not ok:
+        return fallo("waba", "Cuenta de WhatsApp", detalle)
+    pasos.append({"clave": "waba", "titulo": "Cuenta de WhatsApp", "estado": "ok", "detalle": detalle})
+
+    # Desde aquí el bot usa el número del negocio. El de prueba queda guardado para volver.
+    config = X.config_de(empresa)
+    prueba = config.get("prueba") or {}
+    if empresa.get("phone_number_id") and str(empresa.get("phone_number_id")) != str(numero["id"]) and not prueba:
+        prueba = {"phone_number_id": empresa.get("phone_number_id", ""), "whatsapp_token_cif": empresa.get("whatsapp_token_cif", "")}
+    config.update(estado="conectada", waba_id=waba_id, phone_number_id=str(numero["id"]),
+                  numero=info.get("display_phone_number") or numero.get("display_phone_number", ""),
+                  nombre=info.get("verified_name") or numero.get("verified_name", ""),
+                  conectada=c.ahora().isoformat(), sincronizacion={}, prueba=prueba)
+    empresa = c.almacen.actualizar_empresa(eid, {"phone_number_id": str(numero["id"]), "whatsapp_token_cif": c.cifrador.cifrar(token),
+                                                 "coexistencia": config}, c.ahora())
+    config = _sincronizar(empresa, config, token, pasos)
+    config["pasos"] = pasos
+    c.almacen.actualizar_empresa(eid, {"coexistencia": config}, c.ahora())
+    malos = [p for p in pasos if p["estado"] != "ok"]
+    c.almacen.registrar_evento(eid, "coexistencia", f"Coexistencia: el bot quedó conectado al número {config['numero']}"
+                               + (f" ({len(malos)} cosa(s) por revisar)." if malos else "."), c.ahora())
+    return jsonify({"ok": True, "mensaje": "Listo: el bot quedó conectado al WhatsApp Business." if not malos else
+                    "El bot quedó conectado, pero hay cosas por revisar abajo.", "pasos": pasos})
+
+
+@panel.post("/empresas/<int:eid>/coexistencia/sincronizar")
+@requiere_admin
+def coexistencia_sincronizar(eid):
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    config = X.config_de(empresa)
+    pasos = []
+    config = _sincronizar(empresa, config, E.secretos_de(empresa, c.cifrador)["whatsapp_token"], pasos)
+    config["pasos"] = (config.get("pasos") or []) + pasos
+    c.almacen.actualizar_empresa(eid, {"coexistencia": config}, c.ahora())
+    malos = [p for p in pasos if p["estado"] != "ok"]
+    flash("Sincronización pedida." if not malos else malos[0]["detalle"], "ok" if not malos else "error")
+    return redirect(url_for(".coexistencia", eid=eid))
+
+
+@panel.post("/empresas/<int:eid>/coexistencia/volver")
+@requiere_admin
+def coexistencia_volver(eid):
+    """El bot vuelve a usar el número de prueba. No desconecta nada en Meta ni en el celular."""
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    config = X.config_de(empresa)
+    prueba = config.get("prueba") or {}
+    if not prueba.get("phone_number_id"):
+        flash("No hay un número de prueba guardado.", "error")
+        return redirect(url_for(".coexistencia", eid=eid))
+    config["estado"] = "sin_conectar"
+    c.almacen.actualizar_empresa(eid, {"phone_number_id": prueba["phone_number_id"], "whatsapp_token_cif": prueba["whatsapp_token_cif"],
+                                       "coexistencia": config}, c.ahora())
+    texto = (f"El bot volvió al número de prueba ({prueba['phone_number_id']}). El WhatsApp Business del celular sigue igual; "
+             "para cortar la coexistencia del todo, se desconecta desde la app del celular.")
+    c.almacen.registrar_evento(eid, "coexistencia", texto, c.ahora())
+    flash(texto, "ok")
+    return redirect(url_for(".coexistencia", eid=eid))

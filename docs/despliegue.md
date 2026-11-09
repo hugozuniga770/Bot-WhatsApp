@@ -131,15 +131,27 @@ El token de **Configuración de la API** vence en unas 24 h, y la verificación 
 
 **Comprobación:** la verificación dice "El token no vence".
 
-## Paso 8. El número real de tu mamá — pendiente (D-05)
+## Paso 8. El número real del negocio con coexistencia (v3.4, D-41 a D-44)
 
-| Opción | Su app de WhatsApp Business | Costo | Trabajo |
-|---|---|---|---|
-| A. Proveedor con coexistencia | Sigue funcionando con el mismo número | Depende del proveedor | Conectar el número por el proveedor y adaptar `whatsapp.py` si usa su propia API |
-| B. Número nuevo para el bot | Su número no cambia; el del bot no tiene app | Un chip | Registrar el número en la Cloud API |
-| C. Pasar su número actual solo a la API | Deja de funcionar | — | No recomendado |
+El bot responde en el número del WhatsApp Business del negocio y la dueña sigue usando la app en su celular. **Nunca** uses «Agregar número de teléfono» en Meta con ese número: lo saca de la app del celular.
 
-Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso activo en WhatsApp Business. Mientras tanto, que tu mamá lo siga usando normal y complete el perfil del negocio.
+**Lo que se hace una vez en Meta (con la cuenta de un administrador de la app):**
+
+1. **Registrarse como Tech Provider** (en developers.facebook.com, en la app → casos de uso de WhatsApp). **No se puede deshacer.** Meta puede pedir la verificación del negocio (la de Sentirse Única ya está) y la revisión de la app para los permisos de WhatsApp.
+2. Crear una configuración de **Inicio de sesión con Facebook para empresas** del tipo registro integrado de WhatsApp (*WhatsApp Embedded Signup*), con los permisos `whatsapp_business_management` y `whatsapp_business_messaging`. Meta da un **ID de configuración**.
+3. En «Inicio de sesión con Facebook para empresas» → Configuración: activar «Iniciar sesión con el SDK de JavaScript» y agregar la dirección del servicio (`https://bots-whatsapp-fbx9.onrender.com`) en «Dominios permitidos para el SDK de JavaScript». En Configuración básica de la app, agregar el mismo dominio en «Dominios de la app».
+
+**En el panel:** la empresa → **WhatsApp Business del negocio**:
+
+1. Pega el ID de la configuración y toca **Guardar**.
+2. Con el celular de la dueña a mano (WhatsApp Business 2.24.17 o más nuevo), toca **Conectar el WhatsApp Business**. Meta abre su ventana; ahí se elige el portafolio y se escanea un QR desde la app WhatsApp Business.
+3. Al terminar, el panel cambia el código por el token del negocio, comprueba que el número **siga en la app del celular** (si no, no cambia nada), suscribe la app a la cuenta de WhatsApp y a los campos `smb_message_echoes`, `history`, `smb_app_state_sync` y `account_update`, guarda el número de prueba para poder volver, y pide la sincronización de contactos y después la del historial. **Nunca llama a `/register`.**
+4. Las sincronizaciones se pueden pedir **una sola vez** y **dentro de las 24 h**. Si una falla, el botón **Sincronizar lo que falta** la reintenta mientras se pueda.
+5. La empresa **sigue en prueba**: el bot solo le responde al número del dueño. Los clientes siguen atendidos a mano hasta que actives el bot para todos.
+
+**Qué cambia en el celular:** se apagan los mensajes temporales, los de «ver una vez», la ubicación en tiempo real y las listas de difusión; los grupos no pasan al bot; se desconectan los dispositivos vinculados y **WhatsApp para Windows no funciona**; hay que abrir la app del celular al menos cada 14 días. Si Meta desconecta el número, la Actividad lo dice con el motivo y la pantalla lo muestra como desconectado.
+
+**Volver atrás:** el botón **Volver al número de prueba** hace que el bot use otra vez el número de prueba. Para cortar la coexistencia del todo, se desconecta desde la app WhatsApp Business del celular.
 
 ## Paso 9. Messenger e Instagram (v3.3)
 

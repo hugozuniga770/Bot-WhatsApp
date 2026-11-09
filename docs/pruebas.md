@@ -1,7 +1,7 @@
 # Pruebas y trazabilidad
 
 - Proyecto: Bots de WhatsApp con Claude · Responsable: Hugo Zúñiga
-- Fecha: 09/11/2026 · Versión: v3.3.1
+- Fecha: 09/11/2026 · Versión: v3.4
 - Requisitos: [README, sección 1](../README.md#1-qué-hace) · Arquitectura: [arquitectura.md](arquitectura.md)
 
 ## 1. Cómo se ejecutan
@@ -243,6 +243,24 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 
 **Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.
 
+## v3.4: coexistencia del número del negocio (09/11/2026)
+
+| Entorno | Resultado |
+|---|---|
+| v3.3.1 · GitHub Actions #13 (commit `5c40504`) | **175 passed**, 0 saltadas |
+| v3.4 · entorno de armado, con PostgreSQL 16 real | **189 passed**, 0 saltadas (14 nuevas en `tests/test_coexistencia.py`) |
+| v3.4 · pantalla WhatsApp Business del negocio a 390 px (Playwright) | Sin desplazamiento horizontal, sin errores en la consola |
+| v3.4 · GitHub Actions | **Pendiente:** confirmar al subir |
+
+| Requisito | Tests (`test_coexistencia.py`) |
+|---|---|
+| BOT-RF-36 | `test_RF36_registro_canjea_el_codigo_sincroniza_y_nunca_registra_el_numero`, `test_RF36_conectar_cambia_al_numero_del_negocio_y_sincroniza_en_orden`, `test_RF36_si_el_numero_no_esta_en_la_app_o_falla_el_codigo_no_cambia_nada`, `test_RF36_volver_al_numero_de_prueba`, `test_RF36_la_pantalla_pide_sesion_y_carga_meta_solo_ahi`, `test_RF36_sin_sesion_no_se_ve_ni_se_conecta`, `test_RF36_el_id_de_la_configuracion_son_solo_numeros` |
+| BOT-RF-37 | `test_RF37_extrae_lo_que_el_negocio_escribe_desde_el_celular`, `test_RF37_si_la_duena_responde_a_mano_el_bot_se_calla_en_ese_chat`, `test_RF37_webhook_con_un_eco_firmado_pausa_el_chat` |
+| BOT-RF-38 | `test_RF38_avisos_de_historial_contactos_y_cuenta`, `test_RF38_la_actividad_cuenta_el_historial_y_avisa_la_desconexion` |
+| BOT-RF-39 | `test_RF39_cada_sincronizacion_una_vez_en_orden_y_dentro_de_24_horas`, `test_RF39_pasadas_24_horas_no_se_pide_la_sincronizacion` |
+
+**Lo que no se prueba automáticamente:** la ventana de Meta (el SDK, el QR y el mensaje que avisa el fin del registro) y las respuestas reales de la Graph API: las pruebas usan dobles con la forma que da la documentación de Meta del 09/11/2026. La primera conexión real se hace desde el panel, con la empresa en prueba.
+
 ## v3.3.1: revisión de seguridad de la v3.3 (09/11/2026)
 
 | Entorno | Resultado |
@@ -251,7 +269,7 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 | v3.3 · entorno de armado, con PostgreSQL 16 real | **165 passed** (punto de partida) |
 | v3.3.1 · entorno de armado, con PostgreSQL 16 real | **175 passed**, 0 saltadas (10 pruebas nuevas y 1 corregida) |
 | Las pruebas nuevas contra el código de la v3.3 | **11 fallan**: cada una muestra un problema real que la v3.3.1 corrige |
-| v3.3.1 · GitHub Actions | **Pendiente:** confirmar al subir |
+| v3.3.1 · GitHub Actions #13 (commit `5c40504`) | **175 passed**, 0 saltadas (09/11/2026) |
 
 | Requisito | Tests nuevos o cambiados |
 |---|---|

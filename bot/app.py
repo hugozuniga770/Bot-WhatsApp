@@ -35,6 +35,7 @@ class Contexto:
     ejecutar: object
     reloj: object
     conector: object = None  # v3.3: conexión guiada de Messenger e Instagram
+    registro: object = None  # v3.4: coexistencia del número del WhatsApp Business
 
 
     def ahora(self) -> datetime:
@@ -117,7 +118,29 @@ def recibir(slug):
         c.ejecutar(_atender_seguro, c, empresa["id"], msg)
     for falla in fallas:
         c.ejecutar(_registrar_falla_segura, c, empresa["id"], falla)
+    # v3.4, coexistencia: lo que la dueña escribe desde el celular, el historial, los contactos y los avisos
+    for eco in reglas.extraer_ecos(datos, cuentas):
+        c.ejecutar(_registrar_eco_seguro, c, empresa["id"], eco)
+    for aviso in reglas.extraer_avisos_coexistencia(datos, cuentas):
+        c.ejecutar(_registrar_aviso_seguro, c, empresa["id"], aviso)
     return "ok", 200
+
+
+def _registrar_eco_seguro(contexto: Contexto, empresa_id: int, eco):
+    try:
+        empresa = contexto.almacen.empresa(empresa_id)
+        resultado = contexto.servicios.registrar_eco(empresa, eco, contexto.ahora())
+        log.info("[%s] respuesta a mano desde el celular a %s: %s", empresa["slug"], reglas.ocultar_numero(eco.cliente), resultado)
+    except Exception:
+        log.exception("Error inesperado registrando una respuesta a mano de la empresa %s", empresa_id)
+
+
+def _registrar_aviso_seguro(contexto: Contexto, empresa_id: int, aviso: dict):
+    try:
+        empresa = contexto.almacen.empresa(empresa_id)
+        contexto.servicios.registrar_aviso_coexistencia(empresa, aviso, contexto.ahora())
+    except Exception:
+        log.exception("Error inesperado registrando un aviso de coexistencia de la empresa %s", empresa_id)
 
 
 @webhook.get("/salud")
@@ -223,7 +246,7 @@ def _vigilar_reservas(contexto, cada_segundos: int = 300):
 
 
 def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecutar=None, reloj=None, tareas=None,
-              conector=None):
+              conector=None, registro=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config_venia_del_entorno = config is None
     if config is None:
@@ -233,6 +256,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
     from .almacen import crear_almacen
     from .asistente import Asistente
     from .canales import Conector, Mensajeria, Messenger, config_de
+    from .coexistencia import Registro
     from .manual import componer
     from .servicios import Servicios
     from .verificaciones import Verificador
@@ -276,6 +300,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
         ejecutar=ejecutar or _en_hilo,
         reloj=reloj or (lambda: datetime.now(timezone.utc)),
         conector=conector or Conector(config.graph_version),
+        registro=registro or Registro(config.graph_version),
     )
 
     from .panel import panel

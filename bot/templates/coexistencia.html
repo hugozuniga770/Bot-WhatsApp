@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lista_chequeos %}
+{% block titulo %}WhatsApp Business · {{ e.nombre }}{% endblock %}
+{% block contenido %}
+<p><a href="{{ url_for('panel.detalle', eid=e.id) }}">← {{ e.nombre }}</a></p>
+<h1>WhatsApp Business del negocio</h1>
+<p class="suave">Con la <strong>coexistencia</strong>, el bot responde en el número de WhatsApp Business del negocio y {{ e.dueno_nombre or 'la dueña o el dueño' }} sigue usando la app en su celular, con sus chats. Cuando responde a mano desde el celular, el bot se calla en ese chat por {{ e.pausa_horas or 12 }} h.</p>
+
+<section class="seccion" aria-labelledby="t-estado">
+  <h2 id="t-estado">Cómo está</h2>
+  <ul class="lista-simple">
+    <li>
+      <div>
+        <strong>Número que usa el bot</strong>
+        <p class="suave chico">
+          {% if x.estado == 'conectada' %}{{ x.numero }} · {{ x.nombre }} (WhatsApp Business del celular, desde {{ x.conectada[:10] }}).
+          {% elif x.estado == 'desconectada' %}{{ x.numero }}: Meta avisó que se desconectó. Mira la Actividad para saber por qué y vuelve a conectar.
+          {% else %}El número de prueba ({{ e.phone_number_id or 'sin cargar' }}). El WhatsApp Business del negocio todavía no está conectado.{% endif %}
+        </p>
+      </div>
+      <span class="etiqueta {{ {'conectada': 'activa', 'desconectada': 'pausada'}.get(x.estado, 'revision') }}">{{ {'conectada': 'Conectado', 'desconectada': 'Desconectado'}.get(x.estado, 'Sin conectar') }}</span>
+    </li>
+    {% if x.estado != 'sin_conectar' %}
+    {% for tipo, nombre in nombres_sync.items() %}
+    {% set s = x.sincronizacion.get(tipo) or {} %}
+    <li>
+      <div><strong>Sincronización de {{ nombre }}</strong>
+        <p class="suave chico">{% if s.request_id %}Pedida el {{ s.fecha[:16] | replace('T', ' ') }} (pedido {{ s.request_id }}).{% else %}Todavía no se pidió.{% endif %}
+        {% if tipo == 'history' and ultimo.get('coexistencia_historial') %} Último aviso de Meta {{ hace(ultimo['coexistencia_historial']) }}.{% endif %}
+        {% if tipo == 'smb_app_state_sync' and ultimo.get('coexistencia_contactos') %} Último aviso de Meta {{ hace(ultimo['coexistencia_contactos']) }}.{% endif %}</p></div>
+      <span class="etiqueta {{ 'activa' if s.request_id else 'revision' }}">{{ 'Pedida' if s.request_id else 'Falta' }}</span>
+    </li>
+    {% endfor %}
+    {% endif %}
+  </ul>
+  {% if pendientes and x.estado == 'conectada' %}
+    {% if puede_sincronizar %}
+    <form method="post" action="{{ url_for('panel.coexistencia_sincronizar', eid=e.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf() }}">
+      <p class="suave chico">Meta deja pedir cada sincronización una sola vez y dentro de las 24 h de la conexión.</p>
+      <button class="boton principal" type="submit" data-ocupado="Pidiendo…">Sincronizar lo que falta</button>
+    </form>
+    {% else %}<p class="suave chico">{{ motivo_sincronizar }}</p>{% endif %}
+  {% endif %}
+  {% if x.pasos %}
+  <h3 class="seccion">Última conexión</h3>
+  {{ lista_chequeos(x.pasos) }}
+  {% endif %}
+  {% if e.estado == 'revision' %}<p class="suave chico">La empresa está <strong>en prueba</strong>: aunque el número esté conectado, el bot solo le responde al número del dueño ({{ e.dueno_numero | telefono }}). Los clientes siguen siendo atendidos a mano desde el celular hasta que actives el bot para todos.</p>{% endif %}
+</section>
+
+<section class="seccion" aria-labelledby="t-cambia">
+  <h2 id="t-cambia">Qué cambia en el celular</h2>
+  <ul>
+    <li>Los chats siguen en el celular. Al bot pasan los de los últimos 180 días (si el negocio acepta compartirlos); los grupos no pasan.</li>
+    <li>Se apagan los mensajes temporales y los de «ver una vez», la ubicación en tiempo real y las listas de difusión (las que hay quedan solo para leer).</li>
+    <li>Se desconectan los dispositivos vinculados (WhatsApp Web, computadora) y hay que volver a vincularlos. <strong>WhatsApp para Windows no funciona</strong> con la coexistencia.</li>
+    <li>Hay que abrir la app WhatsApp Business del celular al menos una vez cada 14 días; si no, Meta desconecta el bot.</li>
+    <li>La app tiene que ser la versión 2.24.17 o más nueva.</li>
+  </ul>
+</section>
+
+<section class="seccion caja destacada" aria-labelledby="t-conectar">
+  <h2 id="t-conectar">{{ 'Volver a conectar' if x.estado != 'sin_conectar' else 'Conectar' }} el WhatsApp Business</h2>
+  <ol class="suave chico">
+    <li>En Meta, la app tiene que ser de un <strong>Tech Provider</strong> y tener una configuración de «Inicio de sesión con Facebook para empresas» para WhatsApp (registro integrado). Su ID va abajo.</li>
+    <li>En esa configuración, en «Dominios permitidos para el SDK de JavaScript», agrega <code>{{ dominio }}</code>.</li>
+    <li>Ten a mano el celular con el WhatsApp Business del negocio: Meta muestra un código QR para escanear desde la app.</li>
+  </ol>
+  <form method="post" action="{{ url_for('panel.coexistencia_configuracion', eid=e.id) }}" class="en-linea">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <label for="c-config">ID de la configuración</label>
+    <input id="c-config" name="config_id" type="text" inputmode="numeric" autocomplete="off" value="{{ x.config_id }}" required>
+    <button class="boton" type="submit">Guardar</button>
+  </form>
+  {% if not app_id %}<p class="aviso error">Falta el App ID de la empresa: cárgalo en Editar datos y llaves.</p>{% endif %}
+  <div id="coexistencia" data-app-id="{{ app_id }}" data-config-id="{{ x.config_id }}" data-version="{{ version }}"
+       data-finalizar="{{ url_for('panel.coexistencia_finalizar', eid=e.id) }}" data-csrf="{{ csrf() }}">
+    <button class="boton principal" type="button" id="boton-coexistencia" {% if not (app_id and x.config_id) %}disabled{% endif %}>
+      Conectar el WhatsApp Business de {{ e.dueno_nombre or 'el negocio' }}
+    </button>
+    <p class="suave chico" id="estado-coexistencia" role="status" aria-live="polite">{% if not x.config_id %}Guarda primero el ID de la configuración.{% endif %}</p>
+    <ul class="chequeos" id="pasos-coexistencia"></ul>
+  </div>
+  <p class="suave chico"><strong>Nunca</strong> uses «Agregar número de teléfono» en Meta con el número del negocio: eso lo saca de la app del celular. Este botón no lo hace.</p>
+</section>
+
+{% if prueba.phone_number_id and x.estado != 'sin_conectar' %}
+<section class="seccion" aria-labelledby="t-volver">
+  <h2 id="t-volver">Volver al número de prueba</h2>
+  <p class="suave chico">El bot deja de usar el número del negocio y vuelve al de prueba ({{ prueba.phone_number_id }}). No cambia nada en el celular ni en Meta.</p>
+  <form method="post" action="{{ url_for('panel.coexistencia_volver', eid=e.id) }}" data-confirmar="¿El bot vuelve al número de prueba?">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <button class="boton" type="submit">Volver al número de prueba</button>
+  </form>
+</section>
+{% endif %}
+<script src="{{ url_for('static', filename='coexistencia.js') }}" defer></script>
+{% endblock %}

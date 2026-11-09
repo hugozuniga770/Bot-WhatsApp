@@ -7,8 +7,8 @@ import logging
 import threading
 from datetime import datetime
 
-from . import canales, reglas, reservas
-from .reglas import FallaDeEntrega, MensajeEntrante, ocultar_numero
+from . import canales, coexistencia, reglas, reservas
+from .reglas import EcoDelNegocio, FallaDeEntrega, MensajeEntrante, ocultar_numero
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +31,8 @@ FALLA_REGISTRADA = "falla_registrada"
 COMPROBANTE = "comprobante"
 COMPROBANTE_FALLIDO = "comprobante_fallido"
 CANAL_APAGADO = "canal_apagado"
+ECO = "eco"        # v3.4: la dueña respondió a mano desde el celular
+AVISO = "aviso"    # v3.4: historial, contactos o aviso de la cuenta (coexistencia)
 
 # v3.3: en Messenger e Instagram el bot conversa, pero las reservas y los pagos siguen por WhatsApp.
 EXTRA_SOCIAL = {
@@ -244,6 +246,66 @@ class Servicios:
                 r = reservas.resumen(c, self._zona)
                 whatsapp.enviar_texto(c["paciente_telefono"], AVISO_VENCIDA[reglas.trato(empresa)].format(dia=r["dia"], hora=r["hora"], sede=r["sede"]))
         return len(liberadas)
+
+    # ------------------------------------------------------------------ coexistencia (v3.4)
+    def registrar_eco(self, empresa: dict, eco: EcoDelNegocio, ahora: datetime) -> str:
+        """La dueña respondió a mano desde la app WhatsApp Business del celular (D-41).
+
+        Su mensaje queda en el historial (así Claude sabe qué se dijo) y el bot se calla en ese
+        chat durante `pausa_horas`, igual que al derivar. Si sigue respondiendo, la pausa se alarga.
+        """
+        eid = empresa["id"]
+        if not self._almacen.es_nuevo(eid, f"eco:{eco.id}", ahora):
+            return DUPLICADO
+        quien = empresa.get("dueno_nombre") or "El negocio"
+        with self._lock_de(eid, eco.cliente):
+            ya_pausado = reglas.esta_pausado(self._almacen.pausado_hasta(eid, eco.cliente), ahora)
+            texto = eco.texto or f"[{quien} mandó {'una foto' if eco.tipo == 'image' else 'un mensaje'} desde el WhatsApp Business]"
+            self._almacen.agregar(eid, eco.cliente, "assistant", texto, ahora)
+            horas = float(empresa.get("pausa_horas") or 12)
+            self._almacen.pausar(eid, eco.cliente, reglas.fin_de_pausa(ahora, horas))
+        self._almacen.marcar_actividad(eid, "eco", ahora)
+        if not ya_pausado:
+            self._almacen.registrar_evento(eid, "manual", f"{quien} respondió a mano a ...{eco.cliente[-4:]} desde el celular: "
+                                           f"el bot no le responde por {horas:g} h.", ahora)
+        return ECO
+
+    def registrar_aviso_coexistencia(self, empresa: dict, aviso: dict, ahora: datetime) -> str:
+        """Historial, contactos y avisos de la cuenta: quedan en la Actividad, sin guardar su contenido (D-42)."""
+        eid = empresa["id"]
+        campo = aviso.get("campo")
+        if campo == "history":
+            self._almacen.marcar_actividad(eid, "coexistencia_historial", ahora)
+            if aviso.get("error") == coexistencia.ERROR_HISTORIAL_APAGADO:
+                if self._almacen.es_nuevo(eid, "coex:historial:apagado", ahora):
+                    self._almacen.registrar_evento(eid, "coexistencia", "Coexistencia: el negocio eligió no compartir el historial "
+                                                   "de chats. El bot empieza sin él; los chats siguen en el celular.", ahora)
+            elif aviso.get("error"):
+                if self._almacen.es_nuevo(eid, f"coex:historial:error:{aviso['error']}", ahora):
+                    self._almacen.registrar_evento(eid, "error", f"Coexistencia: Meta no pudo pasar el historial (código {aviso['error']}).", ahora)
+            elif aviso.get("progreso") == 100 and self._almacen.es_nuevo(eid, f"coex:historial:{aviso.get('fase')}", ahora):
+                fase = int(aviso.get("fase") or 0) + 1
+                self._almacen.registrar_evento(eid, "coexistencia", f"Coexistencia: historial recibido (parte {fase} de 3).", ahora)
+            return AVISO
+        if campo == "smb_app_state_sync":
+            self._almacen.marcar_actividad(eid, "coexistencia_contactos", ahora)
+            if self._almacen.es_nuevo(eid, "coex:contactos", ahora):
+                self._almacen.registrar_evento(eid, "coexistencia", "Coexistencia: Meta empezó a pasar los contactos del WhatsApp Business.", ahora)
+            return AVISO
+        if campo == "account_update":
+            evento = aviso.get("evento", "")
+            texto = coexistencia.texto_aviso_de_cuenta(evento, aviso.get("motivo", ""), aviso.get("quien", ""))
+            config = coexistencia.config_de(empresa)
+            if evento in ("PARTNER_REMOVED", "ACCOUNT_OFFBOARDED") and config["estado"] == "conectada":
+                config["estado"] = "desconectada"
+                self._almacen.actualizar_empresa(eid, {"coexistencia": config}, ahora)
+            elif evento == "ACCOUNT_RECONNECTED" and config["estado"] == "desconectada":
+                config["estado"] = "conectada"
+                self._almacen.actualizar_empresa(eid, {"coexistencia": config}, ahora)
+            grave = evento in ("PARTNER_REMOVED", "ACCOUNT_OFFBOARDED")
+            self._almacen.registrar_evento(eid, "error" if grave else "coexistencia", texto, ahora)
+            return AVISO
+        return IGNORADO
 
     def registrar_falla(self, empresa: dict, falla: FallaDeEntrega, ahora: datetime) -> str:
         """Meta avisó que no pudo entregar un mensaje del bot: queda en la Actividad con el motivo.

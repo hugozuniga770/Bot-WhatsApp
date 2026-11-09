@@ -172,6 +172,79 @@ def _extraer_sociales(payload: dict, cuentas: dict | None = None) -> list[Mensaj
     return mensajes
 
 
+# ---------------------------------------------------------------- coexistencia (v3.4)
+@dataclass(frozen=True)
+class EcoDelNegocio:
+    """Un mensaje que el negocio mandó a mano desde la app WhatsApp Business del celular
+    (campo `smb_message_echoes`). El bot lo guarda y se calla en ese chat (D-41)."""
+    id: str
+    cliente: str
+    tipo: str
+    texto: str = ""
+
+
+def extraer_ecos(payload, cuentas: dict | None = None) -> list[EcoDelNegocio]:
+    ecos = []
+    if not isinstance(payload, dict):
+        return ecos
+    for entrada in payload.get("entry") or []:
+        for cambio in entrada.get("changes") or []:
+            if cambio.get("field") != "smb_message_echoes":
+                continue
+            valor = cambio.get("value") or {}
+            if _es_ajena(cuentas, "whatsapp", _numero_del_aviso(valor)):
+                continue
+            for m in valor.get("message_echoes") or []:
+                cliente = normalizar_numero(str(m.get("to") or ""))
+                if not m.get("id") or not cliente:
+                    continue
+                tipo = m.get("type", "")
+                texto = ((m.get("text") or {}).get("body") or "").strip() if tipo == "text" else ""
+                ecos.append(EcoDelNegocio(str(m["id"]), cliente, tipo, texto))
+    return ecos
+
+
+def _codigo_de_error(*fuentes) -> int | None:
+    for fuente in fuentes:
+        for error in (fuente or {}).get("errors") or []:
+            if isinstance(error, dict) and isinstance(error.get("code"), int):
+                return error["code"]
+    return None
+
+
+def extraer_avisos_coexistencia(payload, cuentas: dict | None = None) -> list[dict]:
+    """Historial, contactos y avisos de la cuenta que manda Meta con la coexistencia.
+
+    No se guarda el contenido del historial ni los contactos (D-42): solo el avance, para la
+    Actividad del panel. `cuentas["waba"]` deja afuera los avisos de otras cuentas de WhatsApp.
+    """
+    avisos = []
+    if not isinstance(payload, dict):
+        return avisos
+    for entrada in payload.get("entry") or []:
+        for cambio in entrada.get("changes") or []:
+            campo, valor = cambio.get("field"), cambio.get("value") or {}
+            if campo in ("history", "smb_app_state_sync") and _es_ajena(cuentas, "whatsapp", _numero_del_aviso(valor)):
+                continue
+            if campo == "history":
+                partes = valor.get("history") or []
+                if not partes and _codigo_de_error(valor):
+                    avisos.append({"campo": "history", "fase": None, "progreso": None, "error": _codigo_de_error(valor)})
+                for parte in partes:
+                    meta = parte.get("metadata") or {}
+                    avisos.append({"campo": "history", "fase": meta.get("phase"), "progreso": meta.get("progress"),
+                                   "error": _codigo_de_error(parte, valor)})
+            elif campo == "smb_app_state_sync":
+                avisos.append({"campo": "smb_app_state_sync", "contactos": len(valor.get("state_sync") or [])})
+            elif campo == "account_update":
+                if _es_ajena(cuentas, "waba", entrada.get("id")):
+                    continue
+                info = valor.get("disconnection_info") or {}
+                avisos.append({"campo": "account_update", "evento": str(valor.get("event") or ""),
+                               "motivo": str(info.get("reason") or ""), "quien": str(info.get("initiated_by") or "")})
+    return avisos
+
+
 @dataclass(frozen=True)
 class FallaDeEntrega:
     """Meta avisa que no pudo entregar un mensaje que mandó el bot (status "failed")."""

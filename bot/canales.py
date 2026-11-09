@@ -291,8 +291,9 @@ def cuentas_de(empresa: dict) -> dict:
     Un valor vacío quiere decir "todavía no configurado": no se filtra por ese canal.
     """
     c = config_de(empresa)
+    coex = (empresa.get("coexistencia") or {}) if isinstance(empresa.get("coexistencia"), dict) else {}
     return {"whatsapp": str(empresa.get("phone_number_id") or ""), "messenger": str(c["pagina_id"] or ""),
-            "instagram": str(c["ig_id"] or "")}
+            "instagram": str(c["ig_id"] or ""), "waba": str(coex.get("waba_id") or "")}
 
 
 def canales_conectados(empresa: dict) -> list[str]:
