@@ -57,6 +57,8 @@ def extraer_mensajes(payload) -> list[MensajeEntrante]:
     mensajes = []
     if not isinstance(payload, dict):
         return mensajes
+    if payload.get("object") in OBJETOS_SOCIALES:
+        return _extraer_sociales(payload)
     for entrada in payload.get("entry") or []:
         for cambio in entrada.get("changes") or []:
             if cambio.get("field", "messages") != "messages":
@@ -73,6 +75,78 @@ def extraer_mensajes(payload) -> list[MensajeEntrante]:
                     media = m.get(tipo) or {}
                     media_id, texto = str(media.get("id") or ""), (media.get("caption") or "").strip()
                 mensajes.append(MensajeEntrante(m["id"], m["from"], tipo, texto, media_id))
+    return mensajes
+
+
+# ---------------------------------------------------------------- Messenger e Instagram (v3.3)
+# Un chat de Messenger o Instagram se guarda igual que uno de WhatsApp, pero en vez del
+# número lleva un prefijo y el id que Meta le da a esa persona en esa página: "fb:<PSID>"
+# o "ig:<IGSID>". Así las tablas no cambian y no se mezcla con un número de teléfono.
+OBJETOS_SOCIALES = {"page": "messenger", "instagram": "instagram"}
+PREFIJOS = {"messenger": "fb:", "instagram": "ig:"}
+NOMBRES_CANAL = {"whatsapp": "WhatsApp", "messenger": "Messenger", "instagram": "Instagram"}
+# Lo más largo que acepta cada canal en un mensaje de texto (documentación de Meta, 09/11/2026)
+LIMITE_TEXTO = {"whatsapp": 4096, "messenger": 2000, "instagram": 1000}
+
+
+def canal_de(destino: str) -> str:
+    """'fb:123' -> 'messenger', 'ig:123' -> 'instagram', '59170000001' -> 'whatsapp'."""
+    for canal, prefijo in PREFIJOS.items():
+        if (destino or "").startswith(prefijo):
+            return canal
+    return "whatsapp"
+
+
+def id_social(destino: str) -> str:
+    """El id que entiende Meta, sin el prefijo del canal."""
+    canal = canal_de(destino)
+    return destino[len(PREFIJOS[canal]):] if canal in PREFIJOS else destino
+
+
+def etiqueta_contacto(destino: str) -> str:
+    """Cómo se nombra a un cliente en los avisos al dueño y en el panel."""
+    canal = canal_de(destino)
+    if canal == "whatsapp":
+        return f"+{destino}"
+    return f"de {NOMBRES_CANAL[canal]} (...{destino[-4:]})"
+
+
+def _extraer_sociales(payload: dict) -> list[MensajeEntrante]:
+    """Mensajes de Messenger (object "page") o Instagram (object "instagram").
+
+    Se ignoran los ecos (lo que manda la propia página, también desde Business Suite),
+    las lecturas y las entregas. Un botón tocado (postback) se trata como texto.
+    """
+    canal = OBJETOS_SOCIALES[payload["object"]]
+    prefijo = PREFIJOS[canal]
+    mensajes = []
+    for entrada in payload.get("entry") or []:
+        propio = str(entrada.get("id") or "")
+        for evento in entrada.get("messaging") or []:
+            remitente = str((evento.get("sender") or {}).get("id") or "")
+            if not remitente or remitente == propio:
+                continue
+            m = evento.get("message")
+            if isinstance(m, dict):
+                if m.get("is_echo") or not m.get("mid"):
+                    continue
+                texto = (m.get("text") or "").strip()
+                if texto:
+                    mensajes.append(MensajeEntrante(m["mid"], prefijo + remitente, "text", texto))
+                    continue
+                adjuntos = m.get("attachments") or []
+                tipo_meta = (adjuntos[0].get("type") if adjuntos and isinstance(adjuntos[0], dict) else "") or ""
+                url = str(((adjuntos[0].get("payload") or {}) if adjuntos else {}).get("url") or "")
+                tipo = {"image": "image", "file": "document"}.get(tipo_meta, tipo_meta or "desconocido")
+                if (m.get("sticker_id") or (adjuntos and (adjuntos[0].get("payload") or {}).get("sticker_id"))):
+                    tipo, url = "sticker", ""
+                mensajes.append(MensajeEntrante(m["mid"], prefijo + remitente, tipo, "", url if tipo in ("image", "document") else ""))
+            elif isinstance(evento.get("postback"), dict):
+                p = evento["postback"]
+                texto = (p.get("title") or p.get("payload") or "").strip()
+                ident = p.get("mid") or f"postback:{remitente}:{evento.get('timestamp', '')}"
+                if texto:
+                    mensajes.append(MensajeEntrante(str(ident), prefijo + remitente, "text", texto))
     return mensajes
 
 

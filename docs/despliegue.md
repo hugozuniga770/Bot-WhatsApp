@@ -141,6 +141,15 @@ El token de **Configuración de la API** vence en unas 24 h, y la verificación 
 
 Para la coexistencia, Meta pide que el número lleve al menos 7 días de uso activo en WhatsApp Business. Mientras tanto, que tu mamá lo siga usando normal y complete el perfil del negocio.
 
+## Paso 9. Messenger e Instagram (v3.3)
+
+1. En Meta Business Suite → Configuración → Usuarios del sistema, el usuario del sistema debe tener asignadas la página y la cuenta de Instagram.
+2. Genera un token de ese usuario para la app con: `pages_show_list`, `pages_manage_metadata`, `pages_messaging`, `instagram_basic`, `instagram_manage_messages` (y los de WhatsApp, si es el mismo token).
+3. En Instagram → Configuración → Mensajes → Herramientas conectadas, activa «Permitir acceso a los mensajes».
+4. En el panel: la empresa → **Canales** → pega el token (o déjalo vacío para usar el guardado) → **Buscar mis páginas** → elige la página y los canales → **Conectar**. El bot suscribe la página y registra el webhook en Meta con la misma dirección y token de WhatsApp.
+5. Con la empresa en prueba, escríbele a la página desde tu cuenta y, en Canales, toca **Usar para probar**.
+6. Para que responda a todo el público, Meta exige la revisión de la app para `pages_messaging` e `instagram_manage_messages`. Hasta entonces solo entrega mensajes de quienes tienen un rol en la app.
+
 ## Problemas frecuentes
 
 | Síntoma | Causa probable | Qué hacer |

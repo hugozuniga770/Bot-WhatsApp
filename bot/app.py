@@ -34,6 +34,8 @@ class Contexto:
     verificador: object
     ejecutar: object
     reloj: object
+    conector: object = None  # v3.3: conexión guiada de Messenger e Instagram
+
 
     def ahora(self) -> datetime:
         return self.reloj()
@@ -100,6 +102,9 @@ def recibir(slug):
         abort(403)
     c.almacen.marcar_actividad(empresa["id"], "webhook", c.ahora())
     datos = request.get_json(silent=True)
+    if isinstance(datos, dict) and datos.get("object") in reglas.OBJETOS_SOCIALES:
+        # Para que la pantalla Canales muestre si llegan avisos de Messenger o Instagram
+        c.almacen.marcar_actividad(empresa["id"], f"webhook_{reglas.OBJETOS_SOCIALES[datos['object']]}", c.ahora())
     for msg in reglas.extraer_mensajes(datos):
         c.ejecutar(_atender_seguro, c, empresa["id"], msg)
     for falla in reglas.extraer_fallas(datos):
@@ -196,7 +201,8 @@ def _vigilar_reservas(contexto, cada_segundos: int = 300):
             log.exception("Error al liberar reservas vencidas")
 
 
-def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecutar=None, reloj=None, tareas=None):
+def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecutar=None, reloj=None, tareas=None,
+              conector=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config_venia_del_entorno = config is None
     if config is None:
@@ -205,6 +211,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
 
     from .almacen import crear_almacen
     from .asistente import Asistente
+    from .canales import Conector, Mensajeria, Messenger, config_de
     from .manual import componer
     from .servicios import Servicios
     from .verificaciones import Verificador
@@ -215,8 +222,15 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
     almacen = almacen or crear_almacen(config)
     if servicios is None:
         def fabrica_whatsapp(empresa):
+            # v3.3: devuelve una Mensajeria que manda cada mensaje por su canal (WhatsApp,
+            # Messenger o Instagram). Tiene los mismos métodos que WhatsApp.
             s = secretos_de(empresa, cifrador)
-            return WhatsApp(s["whatsapp_token"], empresa.get("phone_number_id", ""), config.graph_version)
+            whatsapp = WhatsApp(s["whatsapp_token"], empresa.get("phone_number_id", ""), config.graph_version)
+            messenger = None
+            pagina = config_de(empresa)["pagina_id"]
+            if pagina and empresa.get("pagina_token_cif"):
+                messenger = Messenger(pagina, cifrador.descifrar(empresa["pagina_token_cif"]), config.graph_version)
+            return Mensajeria(whatsapp, messenger)
 
         def fabrica_asistente(empresa):
             s = secretos_de(empresa, cifrador)
@@ -240,6 +254,7 @@ def crear_app(config=None, almacen=None, servicios=None, verificador=None, ejecu
         verificador=verificador or Verificador(config.graph_version),
         ejecutar=ejecutar or _en_hilo,
         reloj=reloj or (lambda: datetime.now(timezone.utc)),
+        conector=conector or Conector(config.graph_version),
     )
 
     from .panel import panel

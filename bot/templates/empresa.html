@@ -130,6 +130,7 @@
     </form>
     {% endfor %}
     <a class="boton" href="{{ url_for('panel.editar', eid=e.id) }}">Editar datos y llaves</a>
+    <a class="boton" href="{{ url_for('panel.canales', eid=e.id) }}">Canales: WhatsApp, Messenger e Instagram</a>
   </div>
 </section>
 
@@ -140,6 +141,9 @@
     <div><dt>Phone number ID</dt><dd>{{ e.phone_number_id or '—' }}</dd></div>
     <div><dt>Llave de Claude</dt><dd>{{ mascaras.anthropic_key or '—' }}</dd></div>
     <div><dt>Token de Meta</dt><dd>{{ mascaras.whatsapp_token or '—' }}</dd></div>
+    {% set k = e.canales or {} %}
+    <div><dt>Messenger</dt><dd>{% if k.pagina_id %}{{ k.pagina_nombre }} · {{ 'encendido' if k.messenger else 'apagado' }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Instagram</dt><dd>{% if k.ig_id %}@{{ k.ig_usuario }} · {{ 'encendido' if k.instagram else 'apagado' }}{% else %}—{% endif %}</dd></div>
   </dl>
   <label for="wh-url">Dirección del webhook (para Meta)</label>
   <div class="copiable"><input id="wh-url" type="text" value="{{ webhook_url }}" readonly><button class="boton" type="button" data-copiar="#wh-url">Copiar</button></div>

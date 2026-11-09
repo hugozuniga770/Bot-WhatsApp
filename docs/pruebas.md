@@ -243,6 +243,23 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 
 **Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.
 
+## v3.3: Messenger e Instagram (09/11/2026)
+
+| Entorno | Resultado |
+|---|---|
+| v3.3 · entorno de armado, con PostgreSQL 16 real | **165 passed**, 0 saltadas (18 nuevas en `tests/test_canales.py`) |
+| v3.3 · pantalla Canales a 390 px de ancho (Playwright) | Sin desplazamiento horizontal |
+| v3.3 · GitHub Actions | **Pendiente:** confirmar al subir |
+
+| Requisito | Tests |
+|---|---|
+| BOT-RF-32 | `test_RF32_extrae_mensajes_de_messenger_e_ignora_ecos`, `test_RF32_extrae_mensajes_de_instagram_y_no_los_propios`, `test_RF32_webhook_de_messenger_firmado_se_atiende` |
+| BOT-RF-33 | `test_RF33_messenger_conectado_responde_por_su_canal_sin_agenda`, `test_RF33_derivar_desde_instagram_avisa_al_dueno_por_whatsapp`, `test_RF33_mensajeria_manda_cada_destino_por_su_canal_y_parte_los_textos_largos` |
+| BOT-RF-34 | `test_RF34_en_prueba_solo_responde_a_las_cuentas_de_prueba`, `test_RF34_panel_enciende_apaga_y_marca_cuentas_de_prueba` |
+| BOT-RF-35 | `test_RF35_panel_busca_las_paginas_y_conecta_messenger_e_instagram`, `test_RF35_conector_revisa_permisos_y_trae_paginas_con_instagram`, `test_RF35_verificar_todo_revisa_la_pagina_conectada_sin_bloquear_whatsapp` |
+
+No se prueba contra Meta de verdad: las llamadas a la Graph API se reemplazan por dobles. La primera conexión real se hace desde la pantalla Canales.
+
 ## v3.2: listo para sumar empresas (08/11/2026)
 
 | Corrida | Resultado |

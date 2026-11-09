@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lista_chequeos %}
+{% block titulo %}Canales · {{ e.nombre }}{% endblock %}
+{% block contenido %}
+<p><a href="{{ url_for('panel.detalle', eid=e.id) }}">← {{ e.nombre }}</a></p>
+<h1>Canales</h1>
+<p class="suave">Dónde responde el bot: WhatsApp, Messenger (la página de Facebook) e Instagram. Las reservas y los pagos siguen por WhatsApp; en Messenger e Instagram el bot conversa con la información del negocio y, si quieren agendar, los invita a escribir al WhatsApp.</p>
+
+<section class="seccion" aria-labelledby="t-resumen">
+  <h2 id="t-resumen">Cómo está cada canal</h2>
+  <ul class="lista-simple">
+    <li>
+      <div><strong>WhatsApp</strong><p class="suave chico">{% if whatsapp_listo %}Conectado (número {{ e.phone_number_id }}).{% else %}Falta el Phone number ID o el token: cárgalos en Editar datos y llaves.{% endif %}</p></div>
+      <span class="etiqueta {{ 'activa' if whatsapp_listo else 'revision' }}">{{ 'Conectado' if whatsapp_listo else 'Falta conectar' }}</span>
+    </li>
+    {% for canal in ['messenger', 'instagram'] %}
+    {% set conectado = k.pagina_id and (canal == 'messenger' or k.ig_id) %}
+    <li>
+      <div>
+        <strong>{{ nombres[canal] }}</strong>
+        <p class="suave chico">
+          {% if not conectado %}Sin conectar.
+          {% elif canal == 'messenger' %}Página «{{ k.pagina_nombre }}».
+          {% else %}@{{ k.ig_usuario }} (unida a «{{ k.pagina_nombre }}»).{% endif %}
+          {% if conectado %}{% if ultimo[canal] %}Último aviso de Meta {{ hace(ultimo[canal]) }}.{% else %}Todavía no llegó ningún mensaje.{% endif %}{% endif %}
+        </p>
+      </div>
+      {% if conectado %}
+      <form class="en-linea" method="post" action="{{ url_for('panel.canales_interruptor', eid=e.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf() }}">
+        <input type="hidden" name="canal" value="{{ canal }}">
+        <input type="hidden" name="activo" value="{{ '0' if k[canal] else '1' }}">
+        <span class="etiqueta {{ 'activa' if k[canal] else 'pausada' }}">{{ 'Encendido' if k[canal] else 'Apagado' }}</span>
+        <button class="boton" type="submit">{{ 'Apagar' if k[canal] else 'Encender' }}</button>
+      </form>
+      {% else %}
+      <span class="etiqueta">Sin conectar</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if e.estado == 'revision' %}<p class="suave chico">La empresa está en prueba: en Messenger e Instagram el bot solo responde a las cuentas de prueba (más abajo). Al activarla para todos, responde a todos en los canales encendidos.</p>{% endif %}
+  {% if k.pasos %}
+  <h3 class="seccion">Última conexión</h3>
+  {{ lista_chequeos(k.pasos) }}
+  {% endif %}
+</section>
+
+{% if busqueda %}
+<section class="seccion caja destacada" id="elegir" aria-labelledby="t-elegir">
+  <h2 id="t-elegir">Elige qué conectar</h2>
+  {% set faltan_m = busqueda.faltan.messenger %}
+  {% set faltan_i = busqueda.faltan.instagram %}
+  <ul class="chequeos">
+    <li class="{{ 'ok' if not faltan_m else 'atencion' }}"><span class="icono" aria-hidden="true">{{ '✓' if not faltan_m else '!' }}</span>
+      <div><strong>Permisos para Messenger</strong><p>{% if faltan_m %}Faltan: {{ faltan_m | join(', ') }}.{% else %}Completos.{% endif %}</p></div></li>
+    <li class="{{ 'ok' if not faltan_i else 'atencion' }}"><span class="icono" aria-hidden="true">{{ '✓' if not faltan_i else '!' }}</span>
+      <div><strong>Permisos para Instagram</strong><p>{% if faltan_i %}Faltan: {{ faltan_i | join(', ') }}.{% else %}Completos.{% endif %}</p></div></li>
+    <li class="{{ 'ok' if busqueda.vence == 0 else 'atencion' }}"><span class="icono" aria-hidden="true">{{ '✓' if busqueda.vence == 0 else '!' }}</span>
+      <div><strong>Vencimiento</strong><p>{% if busqueda.vence == 0 %}El token no vence.{% else %}El token vence: conviene uno permanente del usuario del sistema.{% endif %}</p></div></li>
+  </ul>
+  {% if busqueda.paginas %}
+  <form method="post" action="{{ url_for('panel.canales_conectar', eid=e.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <fieldset>
+      <legend>Página</legend>
+      <div class="opciones">
+        {% for p in busqueda.paginas %}
+        <label><input type="radio" name="pagina_id" value="{{ p.id }}" {% if loop.first %}checked{% endif %} required>
+          {{ p.nombre }}{% if p.ig_usuario %} · Instagram @{{ p.ig_usuario }}{% else %} · sin Instagram unido{% endif %}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Canales</legend>
+      <div class="opciones">
+        <label><input type="checkbox" name="messenger" value="1" checked> Messenger</label>
+        <label><input type="checkbox" name="instagram" value="1" checked> Instagram</label>
+      </div>
+    </fieldset>
+    <p class="suave chico">Al conectar, el bot suscribe la página a la app y registra el webhook en Meta (la misma dirección y token de WhatsApp). No cambia nada en la página ni publica nada.</p>
+    <div class="acciones"><button class="boton principal" type="submit">Conectar</button></div>
+  </form>
+  {% else %}
+  <p>Este token no llega a ninguna página. En Meta Business Suite → Configuración → Usuarios del sistema, asígnale la página (con control total) al usuario del sistema y vuelve a buscar.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="seccion" id="conectar" aria-labelledby="t-conectar">
+  <h2 id="t-conectar">{% if k.pagina_id %}Volver a conectar o cambiar de página{% else %}Conectar Messenger e Instagram{% endif %}</h2>
+  <ol class="chico">
+    <li>En Meta Business Suite → Configuración → Usuarios del sistema, el usuario del sistema tiene que tener asignadas la página y la cuenta de Instagram.</li>
+    <li>Genera un token de ese usuario para esta app con estos permisos: {{ (permisos.messenger + permisos.instagram) | unique | join(', ') }}. Si ya generaste uno con todo eso, déjalo vacío: se usa el guardado{% if token_guardado %} ({{ token_guardado }}){% endif %}.</li>
+    <li>En Instagram (app) → Configuración → Mensajes → Herramientas conectadas, activa «Permitir acceso a los mensajes».</li>
+  </ol>
+  <form method="post" action="{{ url_for('panel.canales_buscar', eid=e.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <div class="campo">
+      <label for="c-token">Token de Meta<span class="ayuda">Opcional. Pégalo solo si es nuevo; se guarda cifrado.</span></label>
+      <input id="c-token" name="token" type="password" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="acciones"><button class="boton principal" type="submit">Buscar mis páginas</button></div>
+  </form>
+  <p class="suave chico">Mientras la app de Meta no pase la revisión de Messenger e Instagram, Meta solo entrega los mensajes de las personas con un rol en la app (administradores, desarrolladores o evaluadores).</p>
+</section>
+
+{% if k.pagina_id %}
+<section class="seccion" id="probadores" aria-labelledby="t-probadores">
+  <h2 id="t-probadores">Cuentas de prueba</h2>
+  <p class="suave chico">Con la empresa en prueba, el bot solo responde en Messenger e Instagram a estas cuentas. Para sumar la tuya: escríbele a la página desde tu cuenta y vuelve a cargar esta pantalla.</p>
+  {% if k.candidatos %}
+  <h3 class="chico">Escribieron hace poco y el bot no les respondió</h3>
+  <ul class="lista-simple">
+    {% for x in k.candidatos %}
+    <li><span>{{ nombres['messenger' if x.id.startswith('fb:') else 'instagram'] }} · cuenta …{{ x.id[-4:] }}</span>
+      <form class="en-linea" method="post" action="{{ url_for('panel.canales_probador', eid=e.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf() }}">
+        <input type="hidden" name="id" value="{{ x.id }}">
+        <button class="boton" type="submit">Usar para probar</button>
+      </form></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if k.probadores %}
+  <h3 class="chico">Cuentas de prueba</h3>
+  <ul class="lista-simple">
+    {% for x in k.probadores %}
+    <li><span>{{ nombres['messenger' if x.startswith('fb:') else 'instagram'] }} · cuenta …{{ x[-4:] }}</span>
+      <form class="en-linea" method="post" action="{{ url_for('panel.canales_probador', eid=e.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf() }}">
+        <input type="hidden" name="id" value="{{ x }}">
+        <input type="hidden" name="accion" value="quitar">
+        <button class="boton texto" type="submit">Quitar</button>
+      </form></li>
+    {% endfor %}
+  </ul>
+  {% elif not k.candidatos %}
+  <p class="suave chico">Todavía no hay cuentas de prueba.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

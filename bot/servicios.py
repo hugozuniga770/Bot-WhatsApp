@@ -7,14 +7,14 @@ import logging
 import threading
 from datetime import datetime
 
-from . import reglas, reservas
+from . import canales, reglas, reservas
 from .reglas import FallaDeEntrega, MensajeEntrante, ocultar_numero
 
 log = logging.getLogger(__name__)
 
 RESPUESTA_NO_TEXTO = "Por ahora solo puedo leer mensajes de texto. ¿Me lo podría escribir, por favor? 🙏"
 RESPUESTA_ERROR = "Disculpe, tuve un problema para responder. En un momento le contestamos."
-AVISO_DUENO = "🔔 El cliente +{numero} necesita atención personal. El bot no le va a responder durante {horas:g} horas."
+AVISO_DUENO = "🔔 El cliente {cliente} necesita atención personal. El bot no le va a responder durante {horas:g} horas."
 
 # Resultados posibles de atender(); sirven para los logs y para los tests.
 DUPLICADO = "duplicado"
@@ -30,6 +30,17 @@ VACIO = "vacio"
 FALLA_REGISTRADA = "falla_registrada"
 COMPROBANTE = "comprobante"
 COMPROBANTE_FALLIDO = "comprobante_fallido"
+CANAL_APAGADO = "canal_apagado"
+
+# v3.3: en Messenger e Instagram el bot conversa, pero las reservas y los pagos siguen por WhatsApp.
+EXTRA_SOCIAL = {
+    "usted": ("\n\n# Canal de esta conversación\nEsta conversación es por {canal}, no por WhatsApp. Responda igual, "
+              "con la información del negocio. Para agendar una cita o mandar un comprobante de pago, pídale con amabilidad "
+              "que escriba al WhatsApp del negocio, porque por {canal} no se pueden reservar turnos."),
+    "tu": ("\n\n# Canal de esta conversación\nEsta conversación es por {canal}, no por WhatsApp. Responde igual, "
+           "con la información del negocio. Para agendar una cita o mandar un comprobante de pago, pídele con amabilidad "
+           "que escriba al WhatsApp del negocio, porque por {canal} no se pueden reservar turnos."),
+}
 
 # Mensajes automáticos a pacientes, según el trato que eligió el negocio (usted o tú)
 RESPUESTA_COMPROBANTE = {
@@ -76,11 +87,19 @@ class Servicios:
         if not self._almacen.es_nuevo(eid, msg.id, ahora):
             return DUPLICADO
         self._almacen.marcar_actividad(eid, "mensaje", ahora)
+        canal = reglas.canal_de(msg.numero)
+        if canal != "whatsapp" and not canales.canal_encendido(empresa, canal):
+            return CANAL_APAGADO
         if msg.numero in reglas.lista_de_numeros(empresa.get("numeros_ignorados", "")):
             return IGNORADO
         # En revision el bot ya funciona, pero solo le responde al dueño (para probar).
-        if empresa["estado"] == "revision" and msg.numero != empresa.get("dueno_numero"):
-            return EN_REVISION
+        # En Messenger e Instagram no hay número: responde a las cuentas marcadas como de prueba.
+        if empresa["estado"] == "revision":
+            if canal == "whatsapp" and msg.numero != empresa.get("dueno_numero"):
+                return EN_REVISION
+            if canal != "whatsapp" and msg.numero not in canales.config_de(empresa)["probadores"]:
+                self._anotar_candidato(empresa, msg.numero, ahora)
+                return EN_REVISION
 
         if reservas.activo(empresa):
             self.vencer_reservas(empresa, ahora)
@@ -90,7 +109,8 @@ class Servicios:
                 return PAUSADO
 
             whatsapp = self._whatsapp(empresa)
-            if msg.tipo in ("image", "document") and msg.media_id and reservas.activo(empresa):
+            usa_agenda = reservas.activo(empresa) and canal == "whatsapp"
+            if msg.tipo in ("image", "document") and msg.media_id and usa_agenda:
                 resultado = self._recibir_comprobante(empresa, msg, whatsapp, ahora)
                 if resultado:
                     return resultado
@@ -102,7 +122,6 @@ class Servicios:
             limite = int(empresa.get("historial_limite") or 20)
             historial = reglas.recortar_historial(self._almacen.historial(eid, msg.numero), limite)
 
-            usa_agenda = reservas.activo(empresa)
             enviar_qr = []
 
             def ejecutar(nombre, entrada):
@@ -116,6 +135,9 @@ class Servicios:
                     respuesta = self._asistente(empresa).responder(
                         historial, extra_sistema=reservas.instrucciones(empresa, ahora, self._zona),
                         herramientas=reservas.HERRAMIENTAS, ejecutar=ejecutar)
+                elif canal != "whatsapp":
+                    extra = EXTRA_SOCIAL[reglas.trato(empresa)].format(canal=reglas.NOMBRES_CANAL[canal])
+                    respuesta = self._asistente(empresa).responder(historial, extra_sistema=extra)
                 else:
                     respuesta = self._asistente(empresa).responder(historial)
             except Exception as e:
@@ -142,13 +164,30 @@ class Servicios:
             if pide_humano:
                 horas = float(empresa.get("pausa_horas") or 12)
                 self._almacen.pausar(eid, msg.numero, reglas.fin_de_pausa(ahora, horas))
-                self._almacen.registrar_evento(eid, "derivado", f"Chat ...{msg.numero[-4:]} pasado a {empresa.get('dueno_nombre') or 'la dueña'}.", ahora)
+                origen = "" if canal == "whatsapp" else f" de {reglas.NOMBRES_CANAL[canal]}"
+                self._almacen.registrar_evento(eid, "derivado", f"Chat{origen} ...{msg.numero[-4:]} pasado a {empresa.get('dueno_nombre') or 'la dueña'}.", ahora)
                 dueno = empresa.get("dueno_numero")
                 if dueno and dueno != msg.numero:
-                    whatsapp.enviar_texto(dueno, AVISO_DUENO.format(numero=msg.numero, horas=horas))
+                    whatsapp.enviar_texto(dueno, AVISO_DUENO.format(cliente=reglas.etiqueta_contacto(msg.numero), horas=horas))
                 return DERIVADO
 
             return RESPONDIDO if texto else VACIO
+
+    def _anotar_candidato(self, empresa: dict, destino: str, ahora: datetime) -> None:
+        """En prueba, una cuenta de Messenger o Instagram que no está marcada como de prueba.
+
+        Se anota una sola vez (las últimas 5) para que el panel ofrezca el botón «Usar para probar».
+        """
+        if not self._almacen.es_nuevo(empresa["id"], f"candidato:{destino}", ahora):
+            return
+        c = canales.config_de(empresa)
+        candidatos = [x for x in c["candidatos"] if x.get("id") != destino]
+        candidatos.insert(0, {"id": destino, "fecha": ahora.isoformat()})
+        c["candidatos"] = candidatos[:5]
+        self._almacen.actualizar_empresa(empresa["id"], {"canales": c}, ahora)
+        canal = reglas.NOMBRES_CANAL[reglas.canal_de(destino)]
+        self._almacen.registrar_evento(empresa["id"], "prueba", f"Mensaje de {canal} de ...{destino[-4:]} sin respuesta: el bot está en prueba. "
+                                       "Si es tu cuenta, márcala en Canales para probar.", ahora)
 
     def _recibir_comprobante(self, empresa: dict, msg: MensajeEntrante, whatsapp, ahora: datetime):
         """Una foto o PDF de alguien con una reserva por pagar: se guarda y pasa a 'por revisar'."""

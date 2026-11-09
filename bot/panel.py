@@ -203,7 +203,8 @@ def verificar_empresa(empresa: dict, nuevos: dict | None = None) -> list:
     datos = {**empresa, **{k: v for k, v in (nuevos or {}).items() if v}}
     return [c.verificador.claude(s["anthropic_key"], datos.get("modelo") or reglas.MODELO_POR_DEFECTO),
             *c.verificador.meta(s["whatsapp_token"], datos.get("phone_number_id", ""),
-                                datos.get("meta_app_id", ""), s["meta_app_secret"], c.ahora())]
+                                datos.get("meta_app_id", ""), s["meta_app_secret"], c.ahora()),
+            *(chequeo_canales(empresa) if nuevos is None else [])]
 
 
 @panel.post("/empresas/<int:eid>/prueba")
@@ -360,3 +361,186 @@ def estado_del_webhook(empresa: dict) -> dict:
     ultimo = c.almacen.actividad(empresa["id"]).get("webhook")
     return {"conectado": ultimo is not None,
             "detalle": f"Meta se conectó {reglas.hace(ultimo, c.ahora())}." if ultimo else "Esperando a Meta…"}
+
+
+# ------------------------------------------------------------------ canales (v3.3)
+# Messenger e Instagram se conectan desde una sola pantalla: se elige qué conectar, el bot
+# busca solo la página, su cuenta de Instagram y los tokens, y dice qué falta en Meta.
+import re as _re
+
+from . import canales as K
+
+CANALES_SOCIALES = ("messenger", "instagram")
+ID_SOCIAL = _re.compile(r"(fb|ig):\d{5,40}")
+
+
+def _token_para_canales(empresa: dict) -> str:
+    """El token guardado para buscar páginas; si no hay, el de WhatsApp (suele ser el mismo usuario del sistema)."""
+    c = ctx()
+    return c.cifrador.descifrar(empresa.get("canal_token_cif", "")) or E.secretos_de(empresa, c.cifrador)["whatsapp_token"]
+
+
+def _vista_canales(empresa: dict, busqueda: dict | None = None):
+    c = ctx()
+    actividad = c.almacen.actividad(empresa["id"])
+    return render_template(
+        "canales.html", e=empresa, k=K.config_de(empresa), busqueda=busqueda,
+        whatsapp_listo=bool(empresa.get("phone_number_id") and empresa.get("whatsapp_token_cif")),
+        token_guardado=reglas.enmascarar(_token_para_canales(empresa)),
+        ultimo={canal: actividad.get(f"webhook_{canal}") for canal in CANALES_SOCIALES},
+        ahora=c.ahora(), permisos=K.PERMISOS, nombres=reglas.NOMBRES_CANAL,
+        webhook_url=f"{url_base()}/webhook/{empresa['slug']}",
+    )
+
+
+@panel.get("/empresas/<int:eid>/canales")
+@requiere_admin
+def canales(eid):
+    return _vista_canales(_empresa_o_404(eid))
+
+
+@panel.post("/empresas/<int:eid>/canales/buscar")
+@requiere_admin
+def canales_buscar(eid):
+    """Paso 1: revisar el token y traer las páginas (con su Instagram) a las que llega."""
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    nuevo = "".join(request.form.get("token", "").split())
+    if nuevo and len(nuevo) < 50:
+        flash("El token es un texto largo, sin espacios (suele empezar con EAA). Revisa que lo copiaste completo.", "error")
+        return redirect(url_for(".canales", eid=eid))
+    token = nuevo or _token_para_canales(empresa)
+    if not token:
+        flash("Pega un token de Meta con los permisos de páginas, o carga primero el de WhatsApp en Editar.", "error")
+        return redirect(url_for(".canales", eid=eid))
+    secretos = E.secretos_de(empresa, c.cifrador)
+    ok, revision = c.conector.revisar_token(token, empresa.get("meta_app_id", ""), secretos["meta_app_secret"])
+    if not ok:
+        flash(revision, "error")
+        return redirect(url_for(".canales", eid=eid))
+    ok, paginas = c.conector.paginas(token)
+    if not ok:
+        flash(paginas, "error")
+        return redirect(url_for(".canales", eid=eid))
+    if nuevo:
+        empresa = c.almacen.actualizar_empresa(eid, {"canal_token_cif": c.cifrador.cifrar(nuevo)}, c.ahora())
+    # Los tokens de las páginas no van a la pantalla: se vuelven a pedir al conectar.
+    sin_tokens = [{k: v for k, v in p.items() if k != "token"} for p in paginas]
+    return _vista_canales(empresa, busqueda={**revision, "paginas": sin_tokens})
+
+
+@panel.post("/empresas/<int:eid>/canales/conectar")
+@requiere_admin
+def canales_conectar(eid):
+    """Paso 2: con la página elegida, suscribirla a la app, registrar el webhook y guardar."""
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    elegidos = [canal for canal in CANALES_SOCIALES if request.form.get(canal)]
+    pagina_id = request.form.get("pagina_id", "").strip()
+    if not pagina_id or not elegidos:
+        flash("Elige una página y al menos un canal (Messenger o Instagram).", "error")
+        return redirect(url_for(".canales", eid=eid))
+    token = _token_para_canales(empresa)
+    secretos = E.secretos_de(empresa, c.cifrador)
+    app_id, app_secret = empresa.get("meta_app_id", ""), secretos["meta_app_secret"]
+    ok, paginas = c.conector.paginas(token)
+    pagina = next((p for p in paginas if p["id"] == pagina_id), None) if ok else None
+    if not pagina or not pagina.get("token"):
+        flash(paginas if not ok else "Esa página ya no aparece con este token. Vuelve a buscar.", "error")
+        return redirect(url_for(".canales", eid=eid))
+
+    pasos = []
+
+    def paso(clave, titulo, ok_, detalle):
+        pasos.append({"clave": clave, "titulo": titulo, "estado": "ok" if ok_ else "falla", "detalle": detalle})
+
+    ok_rev, revision = c.conector.revisar_token(token, app_id, app_secret)
+    if ok_rev:
+        faltan = sorted({p for canal in elegidos for p in revision["faltan"][canal]})
+        if faltan:
+            pasos.append({"clave": "permisos", "titulo": "Permisos del token", "estado": "atencion",
+                          "detalle": "Al token le faltan: " + ", ".join(faltan) + ". Genera uno nuevo del usuario del sistema con esos permisos y vuelve a buscar."})
+        else:
+            paso("permisos", "Permisos del token", True, "El token tiene todos los permisos para lo que elegiste.")
+    paso("pagina", f"Página «{pagina['nombre']}»", *c.conector.suscribir_pagina(pagina["id"], pagina["token"]))
+    callback = f"{url_base()}/webhook/{empresa['slug']}"
+    if "messenger" in elegidos:
+        paso("webhook_messenger", "Webhook de Messenger",
+             *c.conector.suscribir_app(app_id, app_secret, "page", K.CAMPOS_PAGINA, callback, empresa.get("verify_token", "")))
+    if "instagram" in elegidos:
+        if not pagina["ig_id"]:
+            paso("webhook_instagram", "Instagram", False, "Esta página no tiene una cuenta profesional de Instagram unida. Únela en Meta Business Suite → Configuración → Cuentas de Instagram, y vuelve a buscar.")
+        else:
+            paso("webhook_instagram", f"Webhook de Instagram (@{pagina['ig_usuario']})",
+                 *c.conector.suscribir_app(app_id, app_secret, "instagram", K.CAMPOS_INSTAGRAM, callback, empresa.get("verify_token", "")))
+
+    config = K.config_de(empresa)
+    config.update(pagina_id=pagina["id"], pagina_nombre=pagina["nombre"], ig_id=pagina["ig_id"], ig_usuario=pagina["ig_usuario"],
+                  messenger="messenger" in elegidos, instagram="instagram" in elegidos and bool(pagina["ig_id"]),
+                  pasos=pasos, conectado=c.ahora().isoformat())
+    c.almacen.actualizar_empresa(eid, {"canales": config, "pagina_token_cif": c.cifrador.cifrar(pagina["token"])}, c.ahora())
+    malos = [p for p in pasos if p["estado"] != "ok"]
+    nombres = " e ".join(reglas.NOMBRES_CANAL[canal] for canal in elegidos)
+    c.almacen.registrar_evento(eid, "canales", f"Página «{pagina['nombre']}» conectada para {nombres}"
+                               + (f" ({len(malos)} cosa(s) por revisar)." if malos else "."), c.ahora())
+    flash(f"Listo: {nombres} conectado." if not malos else f"Se guardó la página, pero hay {len(malos)} cosa(s) por revisar abajo.",
+          "ok" if not malos else "error")
+    return redirect(url_for(".canales", eid=eid))
+
+
+@panel.post("/empresas/<int:eid>/canales/interruptor")
+@requiere_admin
+def canales_interruptor(eid):
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    canal = request.form.get("canal", "")
+    if canal not in CANALES_SOCIALES:
+        flash("Canal desconocido.", "error")
+        return redirect(url_for(".canales", eid=eid))
+    config = K.config_de(empresa)
+    if not config["pagina_id"] or (canal == "instagram" and not config["ig_id"]):
+        flash(f"Primero conecta {reglas.NOMBRES_CANAL[canal]}.", "error")
+        return redirect(url_for(".canales", eid=eid))
+    config[canal] = request.form.get("activo") == "1"
+    c.almacen.actualizar_empresa(eid, {"canales": config}, c.ahora())
+    texto = f"{reglas.NOMBRES_CANAL[canal]} {'encendido' if config[canal] else 'apagado'}: el bot {'responde' if config[canal] else 'ya no responde'} ahí."
+    c.almacen.registrar_evento(eid, "canales", texto, c.ahora())
+    flash(texto, "ok")
+    return redirect(url_for(".canales", eid=eid))
+
+
+@panel.post("/empresas/<int:eid>/canales/probador")
+@requiere_admin
+def canales_probador(eid):
+    """En prueba, en Messenger e Instagram el bot solo responde a las cuentas marcadas aquí."""
+    c = ctx()
+    empresa = _empresa_o_404(eid)
+    destino = request.form.get("id", "").strip()
+    if not ID_SOCIAL.fullmatch(destino):
+        flash("Esa cuenta no es válida.", "error")
+        return redirect(url_for(".canales", eid=eid))
+    config = K.config_de(empresa)
+    if request.form.get("accion") == "quitar":
+        config["probadores"] = [x for x in config["probadores"] if x != destino]
+        texto = f"La cuenta ...{destino[-4:]} ya no es de prueba."
+    else:
+        if destino not in config["probadores"]:
+            config["probadores"] = config["probadores"] + [destino]
+        config["candidatos"] = [x for x in config["candidatos"] if x.get("id") != destino]
+        texto = f"La cuenta ...{destino[-4:]} queda para probar: el bot le responde aunque esté en prueba."
+    c.almacen.actualizar_empresa(eid, {"canales": config}, c.ahora())
+    c.almacen.registrar_evento(eid, "canales", texto, c.ahora())
+    flash(texto, "ok")
+    return redirect(url_for(".canales", eid=eid))
+
+
+def chequeo_canales(empresa: dict) -> list:
+    """Para Verificar todo: si hay una página conectada, que siga suscrita y su token sirva."""
+    from .verificaciones import Chequeo
+    c = ctx()
+    config = K.config_de(empresa)
+    if not config["pagina_id"] or not (config["messenger"] or config["instagram"]):
+        return []
+    token = c.cifrador.descifrar(empresa.get("pagina_token_cif", ""))
+    ok, detalle = c.conector.pagina_suscrita(config["pagina_id"], token, empresa.get("meta_app_id", ""))
+    return [Chequeo("canales", f"Messenger e Instagram ({config['pagina_nombre'] or 'página'})", "ok" if ok else "atencion", detalle)]
