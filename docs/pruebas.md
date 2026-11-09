@@ -242,3 +242,17 @@ Requisitos cubiertos (más RF-20, agregado en v2.4; RF-08 y RF-09 ampliados en v
 | BOT-RF-30 | `test_RF30_aprobar_confirma_la_cita_anota_el_adelanto_y_le_avisa_al_paciente`, `test_RF30_rechazar_vuelve_a_pedir_el_comprobante_con_un_plazo_nuevo`, `test_RF30_la_pestana_pagos_cuenta_los_comprobantes_y_otra_empresa_no_ve_los_archivos`, `test_RF30_la_duena_configura_los_cobros_y_la_asistente_no`, `test_RF30_el_qr_de_cobro_es_publico_y_solo_si_es_un_qr` |
 
 **Lo que no se prueba automáticamente:** la conversación real con Claude (las pruebas usan un doble que "decide" qué herramientas usar) y la descarga real de una foto desde Meta. Se prueban con el número de prueba, siguiendo `docs/despliegue.md`.
+
+## v3.2: listo para sumar empresas (08/11/2026)
+
+| Corrida | Resultado |
+|---|---|
+| v3.1.1 tal como está en GitHub (punto de partida) | **144 passed** con PostgreSQL |
+| v3.2 · entorno de armado, sin base | **130 passed, 17 skipped** |
+| v3.2 · entorno de armado, con PostgreSQL 16 real | **147 passed**, 0 saltadas |
+| v3.2 · GitHub Actions (setup-python@v6, upload-artifact@v5, ubuntu-24.04) | **Pendiente:** confirmar que el CI sale en verde y sin avisos de Node.js 20 |
+
+| Requisito | Tests (`test_panel.py`) |
+|---|---|
+| BOT-RF-17 | `test_RF17_si_el_saldo_alcanza_para_anos_no_muestra_una_fecha_enganosa` (y la fecha con año en `test_RF17_el_detalle_muestra_cuantos_dias_de_credito_quedan`) |
+| BOT-RF-31 | `test_RF31_la_puesta_en_marcha_dice_que_falta_y_se_completa_paso_a_paso`, `test_RF31_el_alta_trae_las_direcciones_para_publicar_la_app` |

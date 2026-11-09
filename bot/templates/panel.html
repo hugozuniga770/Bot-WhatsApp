@@ -15,6 +15,7 @@
         <div class="linea-estado">
           {{ etiqueta_estado(e.estado) }}
           <span class="punto {{ r.salud }}" aria-hidden="true"></span><span>{{ SALUD[r.salud] }}</span>
+          <span>{{ r.listos }}/{{ r.total_pasos }} listos</span>
           <span>{{ r.hoy.llamadas }} respuesta{{ '' if r.hoy.llamadas == 1 else 's' }} hoy</span>
         </div>
       </div>

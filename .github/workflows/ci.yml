@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   verificar-bot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
       # Postgres temporal solo para los tests de AlmacenPostgres (BOT-RF-11).
@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Preparar Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
@@ -68,7 +68,7 @@ jobs:
 
       - name: Conservar el resultado de las pruebas
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: resultados-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidencias/junit.xml

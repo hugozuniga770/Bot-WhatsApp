@@ -107,6 +107,19 @@
       </ol>
     </details>
     <div class="estado-webhook" data-webhook-estado aria-live="polite"><span class="punto pendiente" aria-hidden="true"></span><span>Esperando a Meta…</span></div>
+    <details class="guia">
+      <summary>Después: publicar la app en Meta</summary>
+      <p>Para que lleguen los mensajes de todos tus clientes, y no solo los de prueba, la app de Meta tiene que estar publicada.</p>
+      <ol>
+        <li>En developers.facebook.com → tu app → <strong>Configuración de la app → Básica</strong>, pega estas dos direcciones.</li>
+        <li>Sube un ícono de 1024 × 1024 (puede ser tu logo) y elige una categoría, por ejemplo "Negocios y páginas".</li>
+        <li>Toca <strong>Guardar cambios</strong> y después <strong>Publicar</strong>.</li>
+      </ol>
+      <label for="u-priv">Política de privacidad</label>
+      <div class="copiable"><input id="u-priv" type="text" value="{{ privacidad_url }}" readonly><button class="boton" type="button" data-copiar="#u-priv">Copiar</button></div>
+      <label for="u-elim">Instrucciones para eliminar los datos</label>
+      <div class="copiable"><input id="u-elim" type="text" value="{{ eliminar_url }}" readonly><button class="boton" type="button" data-copiar="#u-elim">Copiar</button></div>
+    </details>
   </section>
 
   {% if admin %}

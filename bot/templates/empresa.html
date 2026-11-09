@@ -16,6 +16,18 @@
   {% else %}Pausado: no le responde a nadie.{% endif %}
 </p>
 
+<section class="seccion" aria-labelledby="t-marcha">
+  <h2 id="t-marcha"><span>Puesta en marcha</span> <span class="etiqueta">{{ r.listos }} de {{ r.total_pasos }}</span></h2>
+  <ul class="chequeos">
+    {% for p in r.pasos %}
+    <li class="{{ 'ok' if p.ok else 'pendiente' }}">
+      <span class="icono" aria-hidden="true">{{ '✓' if p.ok else '…' }}</span>
+      <div><strong>{{ p.titulo }}{% if p.opcional %} <span class="suave chico">(opcional)</span>{% endif %}</strong><p>{{ p.detalle }}</p></div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
 {% if enlace %}
 <section class="caja destacada" id="enlace">
   <h2>Enlace de alta</h2>
@@ -33,8 +45,12 @@
 <section class="tanque" id="creditos" aria-labelledby="t-credito">
   <h2 id="t-credito" class="suave chico">Crédito de Claude</h2>
   {% if cr.estado in ('ok', 'poco') %}
-    {% set d = cr.dias | duracion %}<div class="cifra">{{ d[0] }}<small>{{ d[1] }}</small></div>
-    <p>Alcanza aproximadamente hasta el {{ cr.hasta | fecha }}, al ritmo de {{ cr.gasto_diario | dinero }} por día.</p>
+    {% set d = cr.dias | duracion %}<div class="cifra">{{ d[0] }} <small>{{ d[1] }}</small></div>
+    {% if cr.dias >= 365 %}
+    <p>Al ritmo de {{ cr.gasto_diario | dinero }} por día, el saldo alcanza para más de un año. La estimación se vuelve más precisa cuando haya más uso.</p>
+    {% else %}
+    <p>Alcanza aproximadamente hasta el {{ cr.hasta | fecha_anio }}, al ritmo de {{ cr.gasto_diario | dinero }} por día.</p>
+    {% endif %}
   {% elif cr.estado == 'agotado' %}
     <div class="cifra">0<small>días</small></div>
     <p>Según lo contado, el saldo se terminó. Carga créditos en platform.claude.com y actualiza el saldo aquí.</p>

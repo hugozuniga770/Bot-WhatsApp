@@ -319,6 +319,8 @@ def editar(eid):
         "formulario.html", modo="admin", empresa=empresa, errores=errores, valores=valores,
         mascaras=E.mascaras(empresa, c.cifrador), campos_negocio=CAMPOS_NEGOCIO,
         webhook_url=f"{url_base()}/webhook/{empresa['slug']}",
+        privacidad_url=f"{url_base()}/privacidad/{empresa['slug']}",
+        eliminar_url=f"{url_base()}/eliminar-datos/{empresa['slug']}",
         url_accion=url_for(".editar", eid=eid),
         url_probar=url_for(".probar", eid=eid, que="QUE"),
         url_webhook=url_for(".estado_webhook", eid=eid),

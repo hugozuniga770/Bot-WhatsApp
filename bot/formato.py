@@ -33,6 +33,15 @@ def fecha(d) -> str:
     return f"{d.day} {MESES[d.month - 1]}"
 
 
+def fecha_anio(d) -> str:
+    """'4 ene 2027': para fechas que pueden caer en otro año."""
+    if d is None:
+        return "—"
+    if isinstance(d, datetime):
+        d = d.date()
+    return f"{d.day} {MESES[d.month - 1]} {d.year}"
+
+
 def duracion(dias) -> tuple:
     """(cifra, unidad) para mostrar en grande: 298 -> (298, 'días'); 2922 -> (8, 'años')."""
     dias = int(dias or 0)
@@ -71,7 +80,7 @@ def registrar_filtros(app):
     def dia_local(momento):
         return momento.astimezone(ZoneInfo(ctx().config.zona_horaria)).date()
 
-    app.jinja_env.filters.update(dinero=dinero, tokens=tokens, fecha=fecha, telefono=telefono, duracion=duracion,
+    app.jinja_env.filters.update(fecha_anio=fecha_anio, dinero=dinero, tokens=tokens, fecha=fecha, telefono=telefono, duracion=duracion,
                                  hora=hora, dia_local=dia_local, dia_largo=dia_largo, bs=reglas.bolivianos,
                                  estado_cita=lambda e: reglas.ESTADOS_CITA.get(e, e),
                                  mes_largo=lambda m: MESES_LARGOS[m - 1])

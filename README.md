@@ -1,7 +1,7 @@
 # Bots de WhatsApp con Claude — multiempresa
 
 - Responsable: Hugo Zúñiga
-- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.1.1
+- Repositorio: [hugozuniga770/Bot-WhatsApp](https://github.com/hugozuniga770/Bot-WhatsApp) · Versión: v3.2
 - Tecnología: Python 3.13, Flask, API de Claude (Anthropic), WhatsApp Cloud API (Meta), PostgreSQL (Neon), Render y GitHub Actions
 - Estado al 08/11/2026: v3.1 en línea en Render con el CI en verde. El bot de Sentirse Única responde en el número de prueba y puede agendar valoraciones con adelanto (etapa 2). La **v3.1.1** corrige la revisión de seguridad de la v3.1: los comprobantes se aceptan solo si son fotos o PDF de verdad y se muestran aislados; dos reservas simultáneas ya no pueden tomar el mismo turno; los mensajes automáticos respetan el trato de usted. 144 pruebas. **Pendiente:** el CI de la v3.1.1; publicar la app en Meta (falta el ícono y la verificación del negocio); la coexistencia en el número real (D-05), que necesita la verificación y ser Tech Provider.
 
@@ -47,6 +47,7 @@ Todo se maneja desde un **panel** pensado para el celular:
 | BOT-RF-28 | La foto o PDF del comprobante pasa la cita a "pago por revisar", queda guardada en el panel y se avisa a quien revisa los pagos |
 | BOT-RF-29 | Si el comprobante no llega a tiempo, el horario se libera solo y el bot avisa. Reprogramar sin perder el adelanto solo hasta 24 h antes; cancelar no devuelve el adelanto |
 | BOT-RF-30 | En el panel del negocio: pestaña Pagos, aprobar (confirma la cita y el bot avisa al paciente con la ubicación) o rechazar (pide otro comprobante), y la dueña configura los cobros |
+| BOT-RF-31 | Cada empresa muestra su **Puesta en marcha**: llaves verificadas, webhook, lo que el bot sabe, accesos y activación (más horario y cobros, opcionales). El alta trae las direcciones para publicar la app en Meta |
 
 ## 2. Cómo funciona
 
@@ -68,6 +69,8 @@ flowchart LR
 - **Render solo necesita 3 variables** (`DATABASE_URL`, `ADMIN_PASSWORD`, `CLAVE_MAESTRA`). Las llaves de cada empresa se cargan desde el panel.
 
 Detalle en [docs/arquitectura.md](docs/arquitectura.md).
+
+**Para sumar una empresa nueva:** [docs/empresas-nuevas.md](docs/empresas-nuevas.md), con el paso a paso y los límites de los planes gratis.
 
 ## 3. Cómo se usa
 

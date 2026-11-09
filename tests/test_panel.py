@@ -180,7 +180,8 @@ def test_RF17_el_detalle_muestra_cuantos_dias_de_credito_quedan(admin, empresa, 
     web.post(f"/panel/empresas/{empresa['id']}/saldo", data={"csrf": csrf, "saldo_usd": "5"})
     almacen.sumar_uso(empresa["id"], ahora.date(), 1_000_000, 0)  # USD 0.10 hoy
     html = web.get(f"/panel/empresas/{empresa['id']}").get_data(as_text=True)
-    assert re.search(r'class="cifra">49<small>días', html)  # (5 - 0.10) / 0.10 = 49
+    assert re.search(r'class="cifra">49 <small>días', html)  # (5 - 0.10) / 0.10 = 49
+    assert "Alcanza aproximadamente hasta el 26 dic 2026" in html  # la fecha lleva el año
     lista = web.get("/panel/").get_data(as_text=True)
     assert "<strong>49</strong><span>días de crédito</span>" in lista
 
@@ -244,3 +245,38 @@ def test_RF20_el_admin_borra_los_datos_de_un_cliente_desde_el_panel(admin, empre
     # Y un número mal escrito se explica
     malo = web.post(f"/panel/empresas/{empresa['id']}/borrar-cliente", data={"csrf": csrf, "numero": "123"}, follow_redirects=True)
     assert "con código de país" in malo.get_data(as_text=True)
+
+
+
+def test_RF17_si_el_saldo_alcanza_para_anos_no_muestra_una_fecha_enganosa(admin, empresa, almacen, ahora):
+    web, csrf = admin
+    web.post(f"/panel/empresas/{empresa['id']}/saldo", data={"csrf": csrf, "saldo_usd": "500"})
+    almacen.sumar_uso(empresa["id"], ahora.date(), 100_000, 0)  # USD 0.01 hoy: alcanzaría para más de 100 años
+    html = web.get(f"/panel/empresas/{empresa['id']}").get_data(as_text=True)
+    assert "alcanza para más de un año" in html and "Alcanza aproximadamente hasta el" not in html
+    assert '<small>años</small>' in html
+
+
+def test_RF31_la_puesta_en_marcha_dice_que_falta_y_se_completa_paso_a_paso(admin, empresa, almacen, ahora):
+    from bot import agenda as A
+    web, csrf = admin
+    # Dada una empresa activa sin verificar, sin webhook, sin información ni accesos
+    html = web.get(f"/panel/empresas/{empresa['id']}").get_data(as_text=True)
+    assert "Puesta en marcha" in html and "1 de 5" in html  # solo "activo para todos"
+    assert "Crea al menos uno en «Agenda del negocio»." in html
+    # Cuando se completa todo lo obligatorio
+    web.post(f"/panel/empresas/{empresa['id']}/verificar", data={"csrf": csrf})
+    almacen.marcar_actividad(empresa["id"], "webhook", ahora)
+    almacen.actualizar_empresa(empresa["id"], {"info": {"rubro": "a", "productos": "b", "horario": "c", "ubicacion": "d"}}, ahora)
+    A.crear_usuario(almacen, empresa["id"], "Rosa", "rosa", "dueno", ahora)
+    html = web.get(f"/panel/empresas/{empresa['id']}").get_data(as_text=True)
+    # Entonces quedan los 5 listos, y la lista de empresas lo resume
+    assert "5 de 5" in html and "4 de 8 temas cargados." in html
+    assert "5/5 listos" in web.get("/panel/").get_data(as_text=True)
+
+
+def test_RF31_el_alta_trae_las_direcciones_para_publicar_la_app(admin, empresa):
+    web, _ = admin
+    html = web.get(f"/panel/empresas/{empresa['id']}/editar").get_data(as_text=True)
+    assert f"https://bot.test/privacidad/{empresa['slug']}" in html and f"https://bot.test/eliminar-datos/{empresa['slug']}" in html
+    assert "publicar la app en Meta" in html

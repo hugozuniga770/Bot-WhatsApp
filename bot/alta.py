@@ -61,6 +61,8 @@ def formulario(token):
         "formulario.html", modo="alta", empresa=empresa, errores=errores, valores=valores,
         mascaras=E.mascaras(empresa, c.cifrador), campos_negocio=CAMPOS_NEGOCIO,
         webhook_url=f"{url_base()}/webhook/{empresa['slug']}",
+        privacidad_url=f"{url_base()}/privacidad/{empresa['slug']}",
+        eliminar_url=f"{url_base()}/eliminar-datos/{empresa['slug']}",
         url_accion=url_for(".formulario", token=token),
         url_probar=url_for(".probar", token=token, que="QUE"),
         url_webhook=url_for(".webhook", token=token),
